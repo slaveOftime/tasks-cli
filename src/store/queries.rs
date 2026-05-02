@@ -1,12 +1,10 @@
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use chrono::Utc;
 
-use crate::model::{
-    ReadyTask, StateSnapshot, StateTask, TaskDetail, TaskEvent, TaskRecord, TaskStatus,
-};
+use crate::model::{ReadyTask, StateSnapshot, StateTask, TaskDetail, TaskEvent, TaskStatus};
 
 use super::{
     ListFilter, TaskStore,
@@ -174,11 +172,12 @@ impl TaskStore {
 
     pub fn next_task(&self, id: &str) -> Result<StateTask> {
         let index = self.read_index()?;
+        let resolved_id = self.resolve_task_reference_in_index(&index, id)?;
         let task = index
             .tasks
-            .get(id)
+            .get(&resolved_id)
             .cloned()
-            .ok_or_else(|| anyhow!("task '{id}' does not exist"))?;
+            .expect("resolved task must exist");
         Ok(build_state_task(task, &index, Utc::now()))
     }
 
@@ -207,17 +206,10 @@ impl TaskStore {
         Ok(tasks)
     }
 
-    pub fn get_task(&self, id: &str) -> Result<TaskRecord> {
-        let task_path = self.task_path(id);
-        let bytes = fs::read(&task_path)
-            .with_context(|| format!("failed to read task file '{}'", task_path.display()))?;
-        serde_json::from_slice(&bytes)
-            .with_context(|| format!("failed to parse task file '{}'", task_path.display()))
-    }
-
     pub fn task_detail(&self, id: &str) -> Result<TaskDetail> {
         let index = self.read_index()?;
-        let task = self.get_task(id)?;
+        let resolved_id = self.resolve_task_reference_in_index(&index, id)?;
+        let task = self.read_task_by_id(&resolved_id)?;
         let mut dependencies = Vec::new();
         let mut blocked_by = Vec::new();
         let mut missing_dependencies = Vec::new();
@@ -237,7 +229,7 @@ impl TaskStore {
         let mut children = index
             .tasks
             .values()
-            .filter(|candidate| candidate.parent.as_deref() == Some(id))
+            .filter(|candidate| candidate.parent.as_deref() == Some(task.summary.id.as_str()))
             .cloned()
             .collect::<Vec<_>>();
         children.sort_by(compare_summary_for_list);
@@ -258,6 +250,11 @@ impl TaskStore {
         if !self.events_path().exists() {
             return Ok(Vec::new());
         }
+
+        let resolved_id = match id {
+            Some(task_id) => Some(self.resolve_task_reference(task_id)?),
+            None => None,
+        };
 
         let file = File::open(self.events_path()).with_context(|| {
             format!(
@@ -283,7 +280,10 @@ impl TaskStore {
                     self.events_path().display()
                 )
             })?;
-            if id.is_none_or(|task_id| event.task_id == task_id) {
+            if resolved_id
+                .as_deref()
+                .is_none_or(|task_id| event.task_id == task_id)
+            {
                 events.push(event);
             }
         }

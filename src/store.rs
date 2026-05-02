@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 
+use std::fs as stdfs;
+
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 
-use crate::model::{TaskContinuation, TaskSchedule, TaskStatus};
+use crate::model::{StoreIndex, TaskContinuation, TaskRecord, TaskSchedule, TaskStatus};
 
 mod fs;
 mod helpers;
@@ -97,5 +100,22 @@ impl TaskStore {
 
     fn task_path(&self, id: &str) -> PathBuf {
         self.tasks_dir().join(format!("{id}.json"))
+    }
+
+    pub fn resolve_task_reference(&self, id: &str) -> Result<String> {
+        let index = self.read_index()?;
+        self.resolve_task_reference_in_index(&index, id)
+    }
+
+    fn resolve_task_reference_in_index(&self, index: &StoreIndex, id: &str) -> Result<String> {
+        helpers::resolve_task_reference(index, id)
+    }
+
+    fn read_task_by_id(&self, id: &str) -> Result<TaskRecord> {
+        let task_path = self.task_path(id);
+        let bytes = stdfs::read(&task_path)
+            .with_context(|| format!("failed to read task file '{}'", task_path.display()))?;
+        serde_json::from_slice(&bytes)
+            .with_context(|| format!("failed to parse task file '{}'", task_path.display()))
     }
 }

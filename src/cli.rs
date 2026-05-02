@@ -49,7 +49,9 @@ pub enum Command {
     List(ListArgs),
     #[command(about = "List only tasks that are actionable right now")]
     Ready(ReadyArgs),
-    #[command(about = "Show a high-level snapshot of ready, active, blocked, and handoff work")]
+    #[command(
+        about = "Show a high-level snapshot for humans and hooks: ready, active, blocked, checkpoint, review, and handoff work"
+    )]
     State(StateArgs),
     #[command(about = "Show continuation hints for one task or all paused/handoff tasks")]
     Next(NextArgs),
@@ -118,7 +120,7 @@ pub struct AddArgs {
 
 #[derive(Debug, Args)]
 pub struct ScheduleArgs {
-    /// Task id to update.
+    /// Task id or unique prefix to update.
     pub id: String,
     #[arg(
         long,
@@ -205,13 +207,13 @@ pub struct NextArgs {
 
 #[derive(Debug, Args)]
 pub struct TaskIdArgs {
-    /// Task id to inspect.
+    /// Task id or unique prefix to inspect.
     pub id: String,
 }
 
 #[derive(Debug, Args)]
 pub struct StatusNoteArgs {
-    /// Task id to update.
+    /// Task id or unique prefix to update.
     pub id: String,
     #[arg(long, help = "Optional note to append while changing the task status")]
     pub note: Option<String>,
@@ -219,7 +221,7 @@ pub struct StatusNoteArgs {
 
 #[derive(Debug, Args)]
 pub struct ProgressArgs {
-    /// Task id to update.
+    /// Task id or unique prefix to update.
     pub id: String,
     #[arg(long, help = "Optional note to append while updating progress")]
     pub note: Option<String>,
@@ -242,7 +244,7 @@ pub struct ProgressArgs {
 
 #[derive(Debug, Args)]
 pub struct BlockArgs {
-    /// Task id to block.
+    /// Task id or unique prefix to block.
     pub id: String,
     #[arg(long, help = "Why the task is blocked")]
     pub reason: String,
@@ -250,7 +252,7 @@ pub struct BlockArgs {
 
 #[derive(Debug, Args)]
 pub struct NoteArgs {
-    /// Task id to update.
+    /// Task id or unique prefix to update.
     pub id: String,
     /// Note text to append.
     pub text: String,
@@ -258,7 +260,7 @@ pub struct NoteArgs {
 
 #[derive(Debug, Args)]
 pub struct LogArgs {
-    /// Optional task id. Omit it to read the whole store event log.
+    /// Optional task id or unique prefix. Omit it to read the whole store event log.
     pub id: Option<String>,
     #[arg(long, help = "Maximum number of events to show")]
     pub limit: Option<usize>,
@@ -279,9 +281,9 @@ pub enum RelationCommand {
 
 #[derive(Debug, Args)]
 pub struct DependencyArgs {
-    /// Task that depends on the other task.
+    /// Task id or unique prefix that depends on the other task.
     pub task: String,
-    /// Task that must be completed first.
+    /// Task id or unique prefix that must be completed first.
     pub dependency: String,
 }
 
@@ -300,8 +302,8 @@ pub enum SubtaskCommand {
 
 #[derive(Debug, Args)]
 pub struct SubtaskLinkArgs {
-    /// Parent task id.
+    /// Parent task id or unique prefix.
     pub parent: String,
-    /// Child task id.
+    /// Child task id or unique prefix.
     pub child: String,
 }

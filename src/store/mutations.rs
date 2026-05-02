@@ -61,7 +61,8 @@ impl TaskStore {
 
     pub fn start_task(&self, id: &str, note: Option<String>) -> Result<TaskRecord> {
         let note = normalize_optional_text(note);
-        self.update_task(id, TaskEventKind::Started, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::Started, |task, now| {
             if task.summary.status == TaskStatus::Done {
                 bail!("cannot start task '{id}' because it is already done");
             }
@@ -83,7 +84,8 @@ impl TaskStore {
 
     pub fn checkpoint_task(&self, id: &str, update: ProgressUpdate) -> Result<TaskRecord> {
         let update = update.normalize();
-        self.update_task(id, TaskEventKind::Checkpointed, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::Checkpointed, |task, now| {
             if task.summary.status == TaskStatus::Done {
                 bail!("cannot checkpoint task '{id}' because it is already done");
             }
@@ -106,7 +108,8 @@ impl TaskStore {
     }
 
     pub fn block_task(&self, id: &str, reason: String) -> Result<TaskRecord> {
-        self.update_task(id, TaskEventKind::Blocked, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::Blocked, |task, now| {
             if task.summary.status == TaskStatus::Done {
                 bail!("cannot block task '{id}' because it is already done");
             }
@@ -124,7 +127,8 @@ impl TaskStore {
 
     pub fn review_task(&self, id: &str, note: Option<String>) -> Result<TaskRecord> {
         let note = normalize_optional_text(note);
-        self.update_task(id, TaskEventKind::ReviewRequested, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::ReviewRequested, |task, now| {
             if task.summary.status == TaskStatus::Done {
                 bail!("cannot send task '{id}' to review because it is already done");
             }
@@ -146,7 +150,8 @@ impl TaskStore {
 
     pub fn configure_schedule(&self, id: &str, update: ScheduleUpdate) -> Result<TaskRecord> {
         let schedule = validate_schedule(update.schedule)?;
-        self.update_task(id, TaskEventKind::ScheduleUpdated, move |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::ScheduleUpdated, move |task, now| {
             if update.clear {
                 if schedule.is_some() || update.ready_at.is_some() {
                     bail!("--clear cannot be combined with --cron, --every-minutes, or --ready-at");
@@ -174,7 +179,8 @@ impl TaskStore {
 
     pub fn complete_task(&self, id: &str, update: ProgressUpdate) -> Result<TaskRecord> {
         let update = update.normalize();
-        self.update_task(id, TaskEventKind::Completed, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::Completed, |task, now| {
             task.summary.updated_at = now;
             task.summary.continuation = update.continuation();
             task.completed_at = Some(now);
@@ -207,7 +213,8 @@ impl TaskStore {
     }
 
     pub fn add_note(&self, id: &str, text: String) -> Result<TaskRecord> {
-        self.update_task(id, TaskEventKind::NoteAdded, |task, now| {
+        let id = self.resolve_task_reference(id)?;
+        self.update_task_resolved(&id, TaskEventKind::NoteAdded, |task, now| {
             let text = normalize_required_text(text.clone(), "note")?;
             task.summary.updated_at = now;
             task.notes.push(TaskNote {
@@ -221,10 +228,12 @@ impl TaskStore {
     pub fn add_dependency(&self, task_id: &str, dependency_id: &str) -> Result<TaskRecord> {
         let _lock = self.acquire_write_lock()?;
         let mut index = self.read_index()?;
-        ensure_distinct(task_id, dependency_id, "dependency")?;
-        ensure_task_exists(&index, task_id)?;
-        ensure_task_exists(&index, dependency_id)?;
-        if has_dependency_path(&index, dependency_id, task_id) {
+        let task_id = self.resolve_task_reference_in_index(&index, task_id)?;
+        let dependency_id = self.resolve_task_reference_in_index(&index, dependency_id)?;
+        ensure_distinct(&task_id, &dependency_id, "dependency")?;
+        ensure_task_exists(&index, &task_id)?;
+        ensure_task_exists(&index, &dependency_id)?;
+        if has_dependency_path(&index, &dependency_id, &task_id) {
             bail!(
                 "cannot add dependency '{}' -> '{}' because it would create a cycle",
                 task_id,
@@ -232,17 +241,17 @@ impl TaskStore {
             );
         }
 
-        let mut task = self.get_task(task_id)?;
+        let mut task = self.read_task_by_id(&task_id)?;
         if task
             .summary
             .depends_on
             .iter()
-            .any(|value| value == dependency_id)
+            .any(|value| value == &dependency_id)
         {
             bail!("task '{task_id}' already depends on '{dependency_id}'");
         }
 
-        task.summary.depends_on.push(dependency_id.to_string());
+        task.summary.depends_on.push(dependency_id.clone());
         task.summary.depends_on.sort();
         task.summary.updated_at = Utc::now();
         index
@@ -263,12 +272,14 @@ impl TaskStore {
     pub fn remove_dependency(&self, task_id: &str, dependency_id: &str) -> Result<TaskRecord> {
         let _lock = self.acquire_write_lock()?;
         let mut index = self.read_index()?;
-        ensure_task_exists(&index, task_id)?;
-        let mut task = self.get_task(task_id)?;
+        let task_id = self.resolve_task_reference_in_index(&index, task_id)?;
+        let dependency_id = self.resolve_task_reference_in_index(&index, dependency_id)?;
+        ensure_task_exists(&index, &task_id)?;
+        let mut task = self.read_task_by_id(&task_id)?;
         let original_len = task.summary.depends_on.len();
         task.summary
             .depends_on
-            .retain(|value| value != dependency_id);
+            .retain(|value| value != &dependency_id);
         if task.summary.depends_on.len() == original_len {
             bail!("task '{task_id}' does not depend on '{dependency_id}'");
         }
@@ -292,10 +303,12 @@ impl TaskStore {
     pub fn add_subtask(&self, parent_id: &str, child_id: &str) -> Result<TaskRecord> {
         let _lock = self.acquire_write_lock()?;
         let mut index = self.read_index()?;
-        ensure_distinct(parent_id, child_id, "subtask")?;
-        ensure_task_exists(&index, parent_id)?;
-        ensure_task_exists(&index, child_id)?;
-        if has_parent_path(&index, parent_id, child_id) {
+        let parent_id = self.resolve_task_reference_in_index(&index, parent_id)?;
+        let child_id = self.resolve_task_reference_in_index(&index, child_id)?;
+        ensure_distinct(&parent_id, &child_id, "subtask")?;
+        ensure_task_exists(&index, &parent_id)?;
+        ensure_task_exists(&index, &child_id)?;
+        if has_parent_path(&index, &parent_id, &child_id) {
             bail!(
                 "cannot add subtask '{}' under '{}' because it would create a parent cycle",
                 child_id,
@@ -303,15 +316,15 @@ impl TaskStore {
             );
         }
 
-        let mut child = self.get_task(child_id)?;
-        if child.summary.parent.as_deref() == Some(parent_id) {
+        let mut child = self.read_task_by_id(&child_id)?;
+        if child.summary.parent.as_deref() == Some(&parent_id) {
             bail!("task '{child_id}' is already a subtask of '{parent_id}'");
         }
         if let Some(existing) = child.summary.parent.as_deref() {
             bail!("task '{child_id}' is already a subtask of '{existing}'; remove it first");
         }
 
-        child.summary.parent = Some(parent_id.to_string());
+        child.summary.parent = Some(parent_id.clone());
         child.summary.updated_at = Utc::now();
         index
             .tasks
@@ -331,9 +344,11 @@ impl TaskStore {
     pub fn remove_subtask(&self, parent_id: &str, child_id: &str) -> Result<TaskRecord> {
         let _lock = self.acquire_write_lock()?;
         let mut index = self.read_index()?;
-        ensure_task_exists(&index, child_id)?;
-        let mut child = self.get_task(child_id)?;
-        if child.summary.parent.as_deref() != Some(parent_id) {
+        let parent_id = self.resolve_task_reference_in_index(&index, parent_id)?;
+        let child_id = self.resolve_task_reference_in_index(&index, child_id)?;
+        ensure_task_exists(&index, &child_id)?;
+        let mut child = self.read_task_by_id(&child_id)?;
+        if child.summary.parent.as_deref() != Some(&parent_id) {
             bail!("task '{child_id}' is not a subtask of '{parent_id}'");
         }
 
@@ -354,13 +369,18 @@ impl TaskStore {
         Ok(child)
     }
 
-    fn update_task<F>(&self, id: &str, event_kind: TaskEventKind, update: F) -> Result<TaskRecord>
+    fn update_task_resolved<F>(
+        &self,
+        id: &str,
+        event_kind: TaskEventKind,
+        update: F,
+    ) -> Result<TaskRecord>
     where
         F: FnOnce(&mut TaskRecord, DateTime<Utc>) -> Result<String>,
     {
         let _lock = self.acquire_write_lock()?;
         let mut index = self.read_index()?;
-        let mut task = self.get_task(id)?;
+        let mut task = self.read_task_by_id(id)?;
         let now = Utc::now();
         let message = update(&mut task, now)?;
         task.summary.updated_at = now;

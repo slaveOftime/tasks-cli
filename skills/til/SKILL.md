@@ -55,6 +55,16 @@ tli next
 tli show <task-id> --verbose
 ```
 
+Most commands that take a task id also accept a unique id prefix, so humans usually do not need to type the full stored id:
+
+```powershell
+tli show daily-news
+tli done nightly
+tli dep add parser-cache benchmark
+```
+
+If a prefix matches more than one task, `tli` fails safely and shows the matching ids.
+
 ## Core commands
 
 | Need | Command |

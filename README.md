@@ -102,6 +102,7 @@ Guideline:
 - use plain `show` for compact inspection
 - use `--verbose` for human review
 - use `--json` for hooks, scripts, and agents
+- most commands that take a task id also accept a unique id prefix, so `tli show daily-news` can work without typing the full stored id
 
 ### Reading the default output
 
@@ -130,6 +131,16 @@ tli done nightly-cleanup --note "Cycle complete"
 tli note <task-id> "Need benchmark follow-up"
 tli log <task-id> --limit 20
 ```
+
+When the full task id is long, you can usually type a unique prefix instead:
+
+```powershell
+tli show daily-news
+tli done nightly
+tli dep add parser-cache benchmark
+```
+
+If a prefix matches more than one task, `tli` fails safely and shows the matching task ids.
 
 ### 4. Model dependencies and decomposition
 
@@ -200,6 +211,13 @@ tli --json state --limit 6
 ```
 
 This is the preferred low-token integration surface because it returns compact counts and short actionable entries.
+
+For a simple supervisor hook, one good default is:
+
+1. run `tli --json state --limit 6` once
+2. surface only the `ready` and `active` entries in the prompt
+3. omit the prompt entirely when both sections are empty
+4. drill into `show`, `next`, or `log` only for the specific task that needs attention
 
 ### Drill down only when needed
 

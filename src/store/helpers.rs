@@ -304,6 +304,41 @@ pub(super) fn ensure_task_exists(index: &StoreIndex, task_id: &str) -> Result<()
     bail!("task '{task_id}' does not exist")
 }
 
+pub(super) fn resolve_task_reference(index: &StoreIndex, task_id: &str) -> Result<String> {
+    let requested = normalize_required_text(task_id.to_string(), "task id")?;
+    let lookup = requested.to_lowercase();
+
+    if index.tasks.contains_key(&lookup) {
+        return Ok(lookup);
+    }
+
+    let mut matches = index
+        .tasks
+        .values()
+        .filter(|task| task.id.starts_with(&lookup))
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| left.id.cmp(&right.id));
+
+    match matches.as_slice() {
+        [] => bail!("task '{requested}' does not exist"),
+        [task] => Ok(task.id.clone()),
+        _ => {
+            let preview = matches
+                .iter()
+                .take(8)
+                .map(|task| format!("{} ({})", task.id, task.title))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let suffix = if matches.len() > 8 {
+                format!(", +{} more", matches.len() - 8)
+            } else {
+                String::new()
+            };
+            bail!("task id prefix '{requested}' is ambiguous; matches: {preview}{suffix}")
+        }
+    }
+}
+
 pub(super) fn ensure_distinct(left: &str, right: &str, relation_name: &str) -> Result<()> {
     if left == right {
         bail!("cannot link task '{left}' to itself as a {relation_name}");

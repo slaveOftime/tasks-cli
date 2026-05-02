@@ -76,8 +76,16 @@ fn help_output_explains_human_and_json_usage() {
         .args(["show", "--help"])
         .assert()
         .success()
-        .stdout(contains("Task id to inspect"))
+        .stdout(contains("Task id or unique prefix to inspect"))
         .stdout(contains("human-friendly terminal output"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .args(["state", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("review"))
+        .stdout(contains("handoff"));
 }
 
 #[test]
@@ -153,6 +161,52 @@ fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["title"], "Ship first slice");
     assert_eq!(detail["ready"], true);
+}
+
+#[test]
+fn unique_task_id_prefixes_work_and_ambiguous_prefixes_fail_safely() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    add_task(temp.path(), "daily-news-prep", "Prepare daily news");
+    add_task(temp.path(), "daily-review", "Review daily plan");
+    add_task(temp.path(), "parser-cache", "Wire parser cache");
+    add_task(temp.path(), "benchmark-parser", "Benchmark parser");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["show", "daily-news"])
+        .assert()
+        .success()
+        .stdout(contains("Prepare daily news"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["note", "daily-news", "Needs source review"])
+        .assert()
+        .success()
+        .stdout(contains("Updated"))
+        .stdout(contains("daily-news-prep"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["dep", "add", "parser", "benchmark"])
+        .assert()
+        .success()
+        .stdout(contains("Linked parser-cache -> benchmark-parser"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["show", "daily"])
+        .assert()
+        .failure()
+        .stderr(contains("ambiguous"))
+        .stderr(contains("daily-news-prep"))
+        .stderr(contains("daily-review"));
 }
 
 #[test]

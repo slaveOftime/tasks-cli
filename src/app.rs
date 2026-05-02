@@ -226,6 +226,8 @@ fn handle_dependency(
 ) -> Result<()> {
     match args.command {
         RelationCommand::Add(DependencyArgs { task, dependency }) => {
+            let task = store.resolve_task_reference(&task)?;
+            let dependency = store.resolve_task_reference(&dependency)?;
             let updated = store.add_dependency(&task, &dependency)?;
             print_link_result(
                 store,
@@ -236,6 +238,8 @@ fn handle_dependency(
             )
         }
         RelationCommand::Remove(DependencyArgs { task, dependency }) => {
+            let task = store.resolve_task_reference(&task)?;
+            let dependency = store.resolve_task_reference(&dependency)?;
             let updated = store.remove_dependency(&task, &dependency)?;
             print_link_result(
                 store,
@@ -254,6 +258,8 @@ fn handle_dependency(
 fn handle_subtask(store: &TaskStore, args: SubtaskArgs, json: bool, verbose: bool) -> Result<()> {
     match args.command {
         SubtaskCommand::Add(SubtaskLinkArgs { parent, child }) => {
+            let parent = store.resolve_task_reference(&parent)?;
+            let child = store.resolve_task_reference(&child)?;
             let updated = store.add_subtask(&parent, &child)?;
             print_link_result(
                 store,
@@ -264,6 +270,8 @@ fn handle_subtask(store: &TaskStore, args: SubtaskArgs, json: bool, verbose: boo
             )
         }
         SubtaskCommand::Remove(SubtaskLinkArgs { parent, child }) => {
+            let parent = store.resolve_task_reference(&parent)?;
+            let child = store.resolve_task_reference(&child)?;
             let updated = store.remove_subtask(&parent, &child)?;
             print_link_result(
                 store,
