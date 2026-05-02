@@ -6,9 +6,11 @@ Use `tli` to keep repo-local task state in `.tli/`. It is compact by default for
 
 ```powershell
 tli add "Implement parser cache" --summary "Cache parsed plans by workspace" --label rust --label perf
+tli add "Nightly cleanup" --cron "0 22 * * *"
 tli state
 tli ready
 tli show <task-id>
+tli schedule <task-id> --every-minutes 1440
 tli start <task-id> --note "Picked up after triage"
 tli checkpoint <task-id> --note "Pause here" --next-step "Resume benchmark wiring"
 tli done <task-id> --note "Merged" --next-task follow-up-task-id
@@ -57,7 +59,8 @@ tli show <task-id> --verbose
 
 | Need | Command |
 | --- | --- |
-| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at RFC3339] [--label tag]` |
+| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at RFC3339] [--cron expr \| --every-minutes n] [--label tag]` |
+| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at RFC3339]` |
 | List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Compact hook state | `tli state [--query text] [--limit n]` |
@@ -104,6 +107,22 @@ Continuation hints have three lanes:
 3. `--next-task` for the next sibling, follow-up, or separate task
 
 If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible. Starting a task clears stored continuation hints because the task is active again.
+
+## Scheduled tasks
+
+Use schedules when a task should come back automatically after each completed cycle.
+
+```powershell
+tli add "Nightly cleanup" --cron "0 22 * * *"
+tli add "Daily review" --every-minutes 1440
+tli schedule nightly-cleanup --cron "0 23 * * *"
+tli done nightly-cleanup --note "Reviewed current worktree"
+```
+
+- `--cron` accepts a standard 5-field cron expression (`minute hour day-of-month month day-of-week`).
+- `--every-minutes` is useful for fixed-interval loops.
+- Scheduled tasks stay `todo`; when you run `tli done`, the current cycle is recorded and the task is re-armed with the next `ready_at`.
+- Pass `--ready-at` when migrating an existing scheduler so the first due time matches the old system exactly.
 
 ## Storage and portability
 

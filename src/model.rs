@@ -48,6 +48,22 @@ impl Display for TaskStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum TaskSchedule {
+    Interval { every_minutes: u32 },
+    Cron { expression: String },
+}
+
+impl Display for TaskSchedule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Interval { every_minutes } => write!(f, "every {every_minutes}m"),
+            Self::Cron { expression } => write!(f, "cron {expression}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskContinuation {
     #[serde(default)]
@@ -73,6 +89,8 @@ pub struct TaskSummary {
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
     pub ready_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub schedule: Option<TaskSchedule>,
     #[serde(default)]
     pub labels: Vec<String>,
     #[serde(default)]
@@ -116,6 +134,7 @@ pub struct TaskRecord {
 pub enum TaskEventKind {
     Created,
     Started,
+    ScheduleUpdated,
     Checkpointed,
     Blocked,
     ReviewRequested,
@@ -132,6 +151,7 @@ impl Display for TaskEventKind {
         let value = match self {
             Self::Created => "created",
             Self::Started => "started",
+            Self::ScheduleUpdated => "schedule_updated",
             Self::Checkpointed => "checkpointed",
             Self::Blocked => "blocked",
             Self::ReviewRequested => "review_requested",

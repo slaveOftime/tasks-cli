@@ -18,6 +18,7 @@ fn skill_command_is_natural_and_covers_command_surface() {
         "Quick start",
         "Recommended agent and Jarvis hook flow",
         "tli add",
+        "tli schedule",
         "tli list",
         "tli ready",
         "tli state",
@@ -58,6 +59,28 @@ fn skill_command_has_json_form_for_agents() {
 }
 
 #[test]
+fn help_output_explains_human_and_json_usage() {
+    Command::cargo_bin("tli")
+        .unwrap()
+        .args(["--help"])
+        .assert()
+        .success()
+        .stdout(contains(
+            "The default output is optimized for people scanning the terminal",
+        ))
+        .stdout(contains("--json"))
+        .stdout(contains("Examples:"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .args(["show", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Task id to inspect"))
+        .stdout(contains("human-friendly terminal output"));
+}
+
+#[test]
 fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
@@ -88,7 +111,18 @@ fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
         .args(["list", "--query", "rust"])
         .assert()
         .success()
-        .stdout(contains("labels=rust"));
+        .stdout(contains("Tasks in"))
+        .stdout(contains("labels: rust"))
+        .stdout(predicates::str::contains("updated:").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--verbose", "list", "--query", "rust"])
+        .assert()
+        .success()
+        .stdout(contains("labels: rust"))
+        .stdout(contains("updated:"));
 
     Command::cargo_bin("tli")
         .unwrap()
@@ -97,7 +131,7 @@ fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
         .assert()
         .success()
         .stdout(contains("Ship first slice"))
-        .stdout(contains("summary:"))
+        .stdout(contains("Summary"))
         .stdout(predicates::str::contains("created:").not());
 
     Command::cargo_bin("tli")
@@ -119,6 +153,75 @@ fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["title"], "Ship first slice");
     assert_eq!(detail["ready"], true);
+}
+
+#[test]
+fn scheduled_tasks_support_cron_interval_and_auto_rearm() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Nightly cleanup",
+            "--id",
+            "nightly",
+            "--cron",
+            "0 22 * * *",
+            "--ready-at",
+            "2026-05-02T22:00:00+08:00",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("Created"))
+        .stdout(contains("schedule: cron 0 22 * * *"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "schedule",
+            "nightly",
+            "--every-minutes",
+            "1440",
+            "--ready-at",
+            "2026-05-02T22:00:00+08:00",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("Scheduled"))
+        .stdout(contains("schedule: every 1440m"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", "nightly", "--note", "Cycle complete"])
+        .assert()
+        .success()
+        .stdout(contains("[todo]"))
+        .stdout(contains("schedule: every 1440m"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--verbose", "show", "nightly"])
+        .assert()
+        .success()
+        .stdout(contains("schedule: every 1440m"))
+        .stdout(contains("Completion note"));
+
+    let state = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "state"])
+        .output()
+        .unwrap();
+    assert!(state.status.success());
+    let state: Value = serde_json::from_slice(&state.stdout).unwrap();
+    assert_eq!(state["counts"]["done"], 0);
+    assert!(state["counts"]["todo"].as_u64().unwrap() >= 1);
 }
 
 #[test]
@@ -172,7 +275,24 @@ fn lifecycle_and_history_cover_start_block_review_note_done() {
         .assert()
         .success()
         .stdout(contains("[done]"))
-        .stdout(contains("next=step:Archive notes"));
+        .stdout(contains("next: step: Archive notes"))
+        .stdout(predicates::str::contains("updated:").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "--verbose",
+            "done",
+            &task,
+            "--note",
+            "Approved again",
+            "--next-step",
+            "Archive notes",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("updated:"));
 
     let log = Command::cargo_bin("tli")
         .unwrap()
@@ -193,6 +313,23 @@ fn lifecycle_and_history_cover_start_block_review_note_done() {
     assert!(kinds.contains(&"note_added"));
     assert!(kinds.contains(&"review_requested"));
     assert!(kinds.contains(&"completed"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["log", &task, "--limit", "2"])
+        .assert()
+        .success()
+        .stdout(contains("Events in"))
+        .stdout(predicates::str::contains("status:").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--verbose", "log", &task, "--limit", "2"])
+        .assert()
+        .success()
+        .stdout(contains("status:"));
 }
 
 #[test]
@@ -257,6 +394,30 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["depends_on"].as_array().unwrap().len(), 0);
     assert_eq!(detail["children"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn ready_command_has_distinct_verbose_mode() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+    add_task(temp.path(), "alpha", "Alpha");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["ready"])
+        .assert()
+        .success()
+        .stdout(contains("Ready tasks in"))
+        .stdout(predicates::str::contains("updated:").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--verbose", "ready"])
+        .assert()
+        .success()
+        .stdout(contains("updated:"));
 }
 
 #[test]
@@ -328,10 +489,19 @@ fn checkpoint_done_next_and_state_support_continuation_handoffs() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
+        .args(["state"])
+        .assert()
+        .success()
+        .stdout(contains("Checkpoint"))
+        .stdout(predicates::str::contains("updated:").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
         .args(["--verbose", "state"])
         .assert()
         .success()
-        .stdout(contains("checkpoint:"))
+        .stdout(contains("Checkpoint"))
         .stdout(contains("updated:"));
 }
 
@@ -404,9 +574,9 @@ fn empty_store_supports_compact_reads_and_first_write_bootstrap() {
         .args(["state"])
         .assert()
         .success()
-        .stdout(contains("counts ready=0"))
-        .stdout(contains("active=0"))
-        .stdout(contains("done=0"));
+        .stdout(contains("Counts"))
+        .stdout(contains("ready: 0"))
+        .stdout(contains("done: 0"));
 
     Command::cargo_bin("tli")
         .unwrap()
@@ -414,11 +584,18 @@ fn empty_store_supports_compact_reads_and_first_write_bootstrap() {
         .args(["add", "Bootstrap", "--id", "bootstrap"])
         .assert()
         .success()
-        .stdout(contains("created bootstrap"));
+        .stdout(contains("Created"))
+        .stdout(contains("bootstrap"));
 
     assert!(temp.path().join(".tli").join("index.json").is_file());
     assert!(temp.path().join(".tli").join("events.ndjson").is_file());
-    assert!(temp.path().join(".tli").join("tasks").join("bootstrap.json").is_file());
+    assert!(
+        temp.path()
+            .join(".tli")
+            .join("tasks")
+            .join("bootstrap.json")
+            .is_file()
+    );
 
     Command::cargo_bin("tli")
         .unwrap()
