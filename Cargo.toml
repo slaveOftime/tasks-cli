@@ -2,6 +2,23 @@
 name = "tli"
 version = "0.1.0"
 edition = "2024"
+description = "Fast file-backed task tracker for humans, hooks, and AI agents."
+license = "MIT"
+repository = "https://github.com/slaveoftime/tasks-cli"
+homepage = "https://github.com/slaveoftime/tasks-cli"
+readme = "README.md"
+keywords = ["tasks", "cli", "productivity", "automation", "agents"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "tli"
+path = "src/main.rs"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = "z"
 
 [dependencies]
 anyhow = "1.0"

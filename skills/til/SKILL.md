@@ -39,6 +39,12 @@ Use `state` first because it reads the summary index and returns cheap counts pl
 tli --json state --limit 6
 ```
 
+That cheap state payload keeps three different situations distinct for agents:
+
+- `ready`: fully actionable now
+- `pending_dependencies`: due now but still blocked by unfinished dependencies
+- `active`: already in flight
+
 Then drill down only when needed:
 
 ```powershell
@@ -97,6 +103,8 @@ tli subtask remove <parent-id> <child-id>
 
 - A task is `ready` only when it is `todo`, its `ready_at` time has arrived, and every dependency is `done`.
 - A subtask does not block its parent automatically; use `dep add` when the parent must wait.
+- If you split a larger task into children and the parent truly depends on one child finishing first, keep both relationships: `subtask add` for structure and `dep add` for gating readiness.
+- `tli show <task-id>` exposes `blocked_by` and `children`, and `tli next <task-id>` can infer a ready child or ready dependency-follow-up when that helps resume work.
 - `tli next <task-id>` can infer a ready child as `next_subtask`.
 
 ## Continuation flows
@@ -142,8 +150,11 @@ By default `tli` stores files under `.tli/` in the current directory:
 .tli/
   index.json
   events.ndjson
+  task-events/<task-id>.ndjson
   tasks/<task-id>.json
 ```
+
+`tasks/<task-id>.json` is the canonical task detail. `index.json` is the summary index used for cheap state queries. `task-events/<task-id>.ndjson` is a file-based read view for faster task-specific logs.
 
 Use `--root <path>` when a hook or script should target a specific store:
 

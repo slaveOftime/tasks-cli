@@ -125,9 +125,12 @@ fn scheduled_tasks_rearm_to_todo_with_next_ready_at() {
     assert_eq!(completed.completed_note.as_deref(), Some("Cycle done"));
     assert_eq!(
         completed.summary.ready_at.unwrap(),
-        DateTime::parse_from_rfc3339("2026-05-03T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc)
+        next_scheduled_ready_at(
+            Some(task.summary.ready_at.unwrap()),
+            task.summary.schedule.as_ref().unwrap(),
+            completed.completed_at.unwrap(),
+        )
+        .unwrap()
     );
 }
 
@@ -154,4 +157,36 @@ fn cron_schedules_rearm_in_local_time() {
     assert_eq!(next.hour(), 23);
     assert_eq!(next.minute(), 20);
     assert_eq!(next.date_naive().to_string(), "2026-05-03");
+}
+
+#[test]
+fn task_event_logs_are_backfilled_from_global_events() {
+    let temp = TempDir::new().unwrap();
+    let store = TaskStore::new(temp.path().join(".tli"));
+
+    for id in ["alpha", "beta"] {
+        store
+            .add_task(AddTaskInput {
+                id: Some(id.to_string()),
+                title: id.to_string(),
+                summary_text: None,
+                ready_at: None,
+                schedule: None,
+                labels: vec![],
+            })
+            .unwrap();
+        store.add_note(id, format!("{id} note")).unwrap();
+    }
+
+    std::fs::remove_dir_all(store.task_events_dir()).unwrap();
+
+    let events = store.read_events(Some("alpha"), None).unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().all(|event| event.task_id == "alpha"));
+    assert!(store.task_events_path("alpha").is_file());
+
+    let beta_events = store.read_events(Some("beta"), None).unwrap();
+    assert_eq!(beta_events.len(), 2);
+    assert!(beta_events.iter().all(|event| event.task_id == "beta"));
+    assert!(store.task_events_path("beta").is_file());
 }

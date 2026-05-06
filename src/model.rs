@@ -222,6 +222,7 @@ pub struct StateCounts {
     pub review: usize,
     pub done: usize,
     pub ready: usize,
+    pub pending_dependencies: usize,
     pub handoff: usize,
 }
 
@@ -231,6 +232,8 @@ pub struct StateSnapshot {
     pub counts: StateCounts,
     #[serde(default)]
     pub ready: Vec<StateTask>,
+    #[serde(default)]
+    pub pending_dependencies: Vec<StateTask>,
     #[serde(default)]
     pub active: Vec<StateTask>,
     #[serde(default)]

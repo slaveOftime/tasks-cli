@@ -428,6 +428,30 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
+        .args(["show", &beta])
+        .assert()
+        .success()
+        .stdout(contains("Blocked by"))
+        .stdout(contains("Children"))
+        .stdout(contains("alpha"))
+        .stdout(contains("child"));
+
+    let detail = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "show", &beta])
+        .output()
+        .unwrap();
+    assert!(detail.status.success());
+    let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
+    assert_eq!(detail["blocked_by"][0]["id"], "alpha");
+    assert_eq!(detail["children"][0]["id"], "child");
+    assert_eq!(detail["next"]["next_subtask"], "child");
+    assert_eq!(detail["next"]["next_task"], "alpha");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
         .args(["dep", "remove", &beta, &alpha])
         .assert()
         .success();
@@ -448,6 +472,78 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["depends_on"].as_array().unwrap().len(), 0);
     assert_eq!(detail["children"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn state_surfaces_due_tasks_with_unmet_dependencies_without_marking_them_ready() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    let dependency = add_task(temp.path(), "dep", "Dependency");
+    add_task(temp.path(), "other", "Other");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Target",
+            "--id",
+            "target",
+            "--ready-at",
+            "2020-01-01T00:00:00Z",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["dep", "add", "target", &dependency])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["ready"])
+        .assert()
+        .success()
+        .stdout(contains("dep"))
+        .stdout(predicates::str::contains("target").not());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["state"])
+        .assert()
+        .success()
+        .stdout(contains("pending deps: 1"))
+        .stdout(contains("Pending dependencies"))
+        .stdout(contains("target"))
+        .stdout(contains("task: dep"));
+
+    let state = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "state", "--limit", "10"])
+        .output()
+        .unwrap();
+    assert!(state.status.success());
+    let state: Value = serde_json::from_slice(&state.stdout).unwrap();
+    assert_eq!(state["counts"]["ready"], 2);
+    assert_eq!(state["counts"]["pending_dependencies"], 1);
+    let ready_ids = state["ready"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(ready_ids.contains(&"dep"));
+    assert!(ready_ids.contains(&"other"));
+    assert_eq!(state["pending_dependencies"][0]["id"], "target");
+    assert_eq!(state["pending_dependencies"][0]["ready"], false);
+    assert_eq!(state["pending_dependencies"][0]["next"]["next_task"], "dep");
 }
 
 #[test]
@@ -643,6 +739,13 @@ fn empty_store_supports_compact_reads_and_first_write_bootstrap() {
 
     assert!(temp.path().join(".tli").join("index.json").is_file());
     assert!(temp.path().join(".tli").join("events.ndjson").is_file());
+    assert!(
+        temp.path()
+            .join(".tli")
+            .join("task-events")
+            .join("bootstrap.ndjson")
+            .is_file()
+    );
     assert!(
         temp.path()
             .join(".tli")

@@ -110,9 +110,10 @@ pub(crate) fn render_ready_list(tasks: &[ReadyTask], verbose: bool, root: &Path)
 
 pub(crate) fn render_state(snapshot: &StateSnapshot, verbose: bool, root: &Path) -> String {
     let mut output = format!(
-        "Store: {}\n\nCounts\n  ready: {} | active: {} | blocked: {} | checkpoint: {} | review: {} | handoff: {} | todo: {} | done: {}",
+        "Store: {}\n\nCounts\n  ready: {} | pending deps: {} | active: {} | blocked: {} | checkpoint: {} | review: {} | handoff: {} | todo: {} | done: {}",
         display_path(root),
         snapshot.counts.ready,
+        snapshot.counts.pending_dependencies,
         snapshot.counts.active,
         snapshot.counts.blocked,
         snapshot.counts.checkpoint,
@@ -124,6 +125,7 @@ pub(crate) fn render_state(snapshot: &StateSnapshot, verbose: bool, root: &Path)
 
     for (label, tasks) in [
         ("Ready", &snapshot.ready),
+        ("Pending dependencies", &snapshot.pending_dependencies),
         ("Active", &snapshot.active),
         ("Blocked", &snapshot.blocked),
         ("Checkpoint", &snapshot.checkpoint),

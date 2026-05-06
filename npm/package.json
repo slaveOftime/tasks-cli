@@ -1,0 +1,26 @@
+{
+  "name": "@slaveoftime/tli",
+  "version": "0.1.0",
+  "description": "Repo-local task tracking for humans, hooks, and AI agents.",
+  "keywords": ["tasks", "cli", "productivity", "automation", "agents", "task-tracker"],
+  "homepage": "https://github.com/slaveoftime/tasks-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slaveoftime/tasks-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/slaveoftime/tasks-cli/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "tli": "./bin/tli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ]
+}

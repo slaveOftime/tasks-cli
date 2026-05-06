@@ -94,6 +94,14 @@ impl TaskStore {
         self.root.join("events.ndjson")
     }
 
+    fn task_events_dir(&self) -> PathBuf {
+        self.root.join("task-events")
+    }
+
+    fn task_events_path(&self, id: &str) -> PathBuf {
+        self.task_events_dir().join(format!("{id}.ndjson"))
+    }
+
     fn lock_path(&self) -> PathBuf {
         self.root.join(".lock")
     }

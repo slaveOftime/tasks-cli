@@ -47,15 +47,18 @@ pub enum Command {
     Schedule(ScheduleArgs),
     #[command(alias = "ls", about = "List tasks with optional filters")]
     List(ListArgs),
-    #[command(about = "List only tasks that are actionable right now")]
+    #[command(about = "List only tasks that are fully actionable right now")]
     Ready(ReadyArgs),
     #[command(
-        about = "Show a high-level snapshot for humans and hooks: ready, active, blocked, checkpoint, review, and handoff work"
+        about = "Show a high-level snapshot for humans and hooks: ready, pending-dependency, active, blocked, checkpoint, review, and handoff work"
     )]
     State(StateArgs),
     #[command(about = "Show continuation hints for one task or all paused/handoff tasks")]
     Next(NextArgs),
-    #[command(alias = "get", about = "Inspect one task in compact or verbose detail")]
+    #[command(
+        alias = "get",
+        about = "Inspect one task with blocked_by, children, and continuation detail"
+    )]
     Show(TaskIdArgs),
     #[command(about = "Move a task into active work")]
     Start(StatusNoteArgs),
@@ -69,9 +72,9 @@ pub enum Command {
     Done(ProgressArgs),
     #[command(about = "Attach a note to a task without changing its status")]
     Note(NoteArgs),
-    #[command(about = "Manage dependency links between tasks")]
+    #[command(about = "Manage dependency links between tasks that gate ready status")]
     Dep(RelationArgs),
-    #[command(about = "Manage parent/child task relationships")]
+    #[command(about = "Manage parent/child task relationships for decomposition")]
     Subtask(SubtaskArgs),
     #[command(
         alias = "history",

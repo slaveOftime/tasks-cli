@@ -1,4 +1,7 @@
 /target
 /.tli
+/npm/bin/tli-linux-x64
+/npm/bin/tli-darwin-arm64
+/npm/bin/tli-win32-x64.exe
 .DS_Store
 Thumbs.db

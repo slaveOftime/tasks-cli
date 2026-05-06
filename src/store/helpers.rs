@@ -6,9 +6,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Local, Utc};
 use cron::Schedule;
 
-use crate::model::{
-    StateCounts, StateTask, StoreIndex, TaskContinuation, TaskSchedule, TaskStatus, TaskSummary,
-};
+use crate::model::{StoreIndex, TaskContinuation, TaskSchedule, TaskStatus, TaskSummary};
 
 use super::ListFilter;
 
@@ -165,118 +163,28 @@ fn parse_cron_schedule(expression: &str) -> Result<Schedule> {
 }
 
 pub(super) fn is_ready_summary(task: &TaskSummary, index: &StoreIndex, now: DateTime<Utc>) -> bool {
-    if task.status != TaskStatus::Todo {
-        return false;
-    }
-    if task.ready_at.is_some_and(|ready_at| ready_at > now) {
-        return false;
-    }
-    task.depends_on.iter().all(|dependency_id| {
-        index
-            .tasks
-            .get(dependency_id)
-            .is_some_and(|dependency| dependency.status == TaskStatus::Done)
-    })
+    is_due_summary(task, now) && !has_unmet_dependencies(task, index)
 }
 
-pub(super) fn child_count(index: &StoreIndex, parent_id: &str) -> usize {
-    index
-        .tasks
-        .values()
-        .filter(|task| task.parent.as_deref() == Some(parent_id))
-        .count()
-}
-
-pub(super) fn resolve_continuation(
+pub(super) fn is_pending_dependency_summary(
     task: &TaskSummary,
     index: &StoreIndex,
     now: DateTime<Utc>,
-) -> TaskContinuation {
-    let mut continuation = task.continuation.clone();
+) -> bool {
+    is_due_summary(task, now) && has_unmet_dependencies(task, index)
+}
 
-    if continuation.next_subtask.is_none() {
-        let mut children = index
+fn is_due_summary(task: &TaskSummary, now: DateTime<Utc>) -> bool {
+    task.status == TaskStatus::Todo && task.ready_at.is_none_or(|ready_at| ready_at <= now)
+}
+
+fn has_unmet_dependencies(task: &TaskSummary, index: &StoreIndex) -> bool {
+    task.depends_on.iter().any(|dependency_id| {
+        index
             .tasks
-            .values()
-            .filter(|candidate| candidate.parent.as_deref() == Some(&task.id))
-            .filter(|candidate| is_ready_summary(candidate, index, now))
-            .cloned()
-            .collect::<Vec<_>>();
-        children.sort_by(compare_summary_for_list);
-        if let Some(child) = children.first() {
-            continuation.next_subtask = Some(child.id.clone());
-        }
-    }
-
-    if continuation.next_task.is_none() {
-        let mut ready_top_level = index
-            .tasks
-            .values()
-            .filter(|candidate| candidate.id != task.id)
-            .filter(|candidate| candidate.parent.is_none())
-            .filter(|candidate| is_ready_summary(candidate, index, now))
-            .cloned()
-            .collect::<Vec<_>>();
-        ready_top_level.sort_by(compare_summary_for_list);
-        if let Some(next_task) = ready_top_level.first() {
-            continuation.next_task = Some(next_task.id.clone());
-        }
-    }
-
-    continuation
-}
-
-pub(super) fn build_counts(
-    tasks: &[TaskSummary],
-    index: &StoreIndex,
-    now: DateTime<Utc>,
-) -> StateCounts {
-    let mut counts = StateCounts::default();
-    for task in tasks {
-        match task.status {
-            TaskStatus::Todo => counts.todo += 1,
-            TaskStatus::Active => counts.active += 1,
-            TaskStatus::Checkpoint => counts.checkpoint += 1,
-            TaskStatus::Blocked => counts.blocked += 1,
-            TaskStatus::Review => counts.review += 1,
-            TaskStatus::Done => counts.done += 1,
-        }
-        if is_ready_summary(task, index, now) {
-            counts.ready += 1;
-        }
-        if task.status == TaskStatus::Done && !resolve_continuation(task, index, now).is_empty() {
-            counts.handoff += 1;
-        }
-    }
-    counts
-}
-
-pub(super) fn build_state_section(
-    mut tasks: Vec<TaskSummary>,
-    index: &StoreIndex,
-    now: DateTime<Utc>,
-    limit: usize,
-) -> Vec<StateTask> {
-    tasks.sort_by(compare_summary_for_list);
-    tasks
-        .into_iter()
-        .take(limit)
-        .map(|task| build_state_task(task, index, now))
-        .collect()
-}
-
-pub(super) fn build_state_task(
-    task: TaskSummary,
-    index: &StoreIndex,
-    now: DateTime<Utc>,
-) -> StateTask {
-    StateTask {
-        ready: is_ready_summary(&task, index, now),
-        dependency_count: task.depends_on.len(),
-        child_count: child_count(index, &task.id),
-        next: resolve_continuation(&task, index, now),
-        task,
-    }
+            .get(dependency_id)
+            .is_none_or(|dependency| dependency.status != TaskStatus::Done)
+    })
 }
 
 pub(super) fn describe_progress_message(prefix: &str, continuation: &TaskContinuation) -> String {
