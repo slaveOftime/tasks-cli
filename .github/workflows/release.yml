@@ -80,7 +80,7 @@ jobs:
           Set-Content $cargoToml $updated -NoNewline
 
       - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package binary
         shell: pwsh
