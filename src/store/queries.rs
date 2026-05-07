@@ -384,7 +384,7 @@ impl TaskStore {
         } else {
             self.read_events_file(self.events_path())?
         };
-        events.sort_by(|left, right| right.at.cmp(&left.at));
+        events.sort_by_key(|e| std::cmp::Reverse(e.at));
         if let Some(limit) = limit {
             events.truncate(limit);
         }
