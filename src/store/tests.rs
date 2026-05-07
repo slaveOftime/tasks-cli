@@ -1,4 +1,4 @@
-use chrono::Timelike;
+use chrono::{Timelike, TimeZone};
 use tempfile::TempDir;
 
 use super::helpers::{next_scheduled_ready_at, slugify};
@@ -136,20 +136,15 @@ fn scheduled_tasks_rearm_to_todo_with_next_ready_at() {
 
 #[test]
 fn cron_schedules_rearm_in_local_time() {
-    let now = DateTime::parse_from_rfc3339("2026-05-02T23:24:00+08:00")
-        .unwrap()
-        .with_timezone(&Utc);
+    let now_local = chrono::Local.with_ymd_and_hms(2026, 5, 2, 23, 24, 0).single().unwrap();
+    let ready_at_local = chrono::Local.with_ymd_and_hms(2026, 5, 2, 23, 20, 0).single().unwrap();
 
     let next = next_scheduled_ready_at(
-        Some(
-            DateTime::parse_from_rfc3339("2026-05-02T23:20:00+08:00")
-                .unwrap()
-                .with_timezone(&Utc),
-        ),
+        Some(ready_at_local.with_timezone(&Utc)),
         &TaskSchedule::Cron {
             expression: "20 23 * * *".to_string(),
         },
-        now,
+        now_local.with_timezone(&Utc),
     )
     .unwrap()
     .with_timezone(&chrono::Local);
