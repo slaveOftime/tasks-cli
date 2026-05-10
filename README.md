@@ -117,6 +117,7 @@ tli log <task-id> --limit 20
 tli dep add <task-id> <dependency-id>
 tli dep remove <task-id> <dependency-id>
 tli subtask add <parent-id> <child-id>
+tli sub add <parent-id> <child-id>
 tli subtask remove <parent-id> <child-id>
 ```
 
@@ -163,6 +164,8 @@ tli --json skill
 ```
 
 The embedded skill guide is compiled into the binary so prompts and hooks can fetch current usage guidance without reading repository files directly.
+
+`--ready-at` accepts RFC3339 timestamps and human-friendly local time: `2026-05-10 12:20:10`, `12:20:10` for today, or `5-10 13:0:0` for the current year.
 
 ## Storage model
 
@@ -228,8 +231,8 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | Need | Command |
 | --- | --- |
 | Print embedded usage help | `tli skill` |
-| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at RFC3339] [--cron expr \| --every-minutes n] [--label tag]` |
-| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at RFC3339]` |
+| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at time] [--cron expr \| --every-minutes n] [--label tag]` |
+| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time]` |
 | List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Show compact repo state | `tli state [--query text] [--limit n]` |
@@ -243,7 +246,7 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | Add note | `tli note <task-id> "..."` |
 | View history | `tli log [task-id]` |
 | Add dependency | `tli dep add <task-id> <dependency-id>` |
-| Add subtask | `tli subtask add <parent-id> <child-id>` |
+| Add subtask | `tli subtask add <parent-id> <child-id>` or `tli sub add <parent-id> <child-id>` |
 
 ## License
 

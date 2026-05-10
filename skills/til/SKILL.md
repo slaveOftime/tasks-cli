@@ -10,7 +10,7 @@ tli add "Nightly cleanup" --cron "0 22 * * *"
 tli state
 tli ready
 tli show <task-id>
-tli schedule <task-id> --every-minutes 1440
+tli schedule <task-id> --every-minutes 1440 --ready-at "12:20:10"
 tli start <task-id> --note "Picked up after triage"
 tli checkpoint <task-id> --note "Pause here" --next-step "Resume benchmark wiring"
 tli done <task-id> --note "Merged" --next-task follow-up-task-id
@@ -75,8 +75,8 @@ If a prefix matches more than one task, `tli` fails safely and shows the matchin
 
 | Need | Command |
 | --- | --- |
-| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at RFC3339] [--cron expr \| --every-minutes n] [--label tag]` |
-| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at RFC3339]` |
+| Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at time] [--cron expr \| --every-minutes n] [--label tag]` |
+| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time]` |
 | List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Compact hook state | `tli state [--query text] [--limit n]` |
@@ -98,6 +98,7 @@ Use dependencies for hard prerequisites and subtasks for decomposition.
 tli dep add <task-id> <dependency-id>
 tli dep remove <task-id> <dependency-id>
 tli subtask add <parent-id> <child-id>
+tli sub add <parent-id> <child-id>
 tli subtask remove <parent-id> <child-id>
 ```
 
@@ -124,7 +125,7 @@ Continuation hints have three lanes:
 2. `--next-subtask` for the child task to pick up next
 3. `--next-task` for the next sibling, follow-up, or separate task
 
-If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible. Starting a task clears stored continuation hints because the task is active again.
+If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible for unfinished tasks. Done tasks only appear in `tli next`/handoff lists when they have explicit continuation hints such as `--next-step`, `--next-subtask`, or `--next-task`. Starting a task clears stored continuation hints because the task is active again.
 
 ## Scheduled tasks
 
@@ -139,6 +140,7 @@ tli done nightly-cleanup --note "Reviewed current worktree"
 
 - `--cron` accepts a standard 5-field cron expression (`minute hour day-of-month month day-of-week`).
 - `--every-minutes` is useful for fixed-interval loops.
+- `--ready-at` accepts RFC3339 timestamps plus human-friendly local time: `2026-05-10 12:20:10`, `12:20:10` for today, and `5-10 13:0:0` for the current year.
 - Scheduled tasks stay `todo`; when you run `tli done`, the current cycle is recorded and the task is re-armed with the next `ready_at`.
 - Pass `--ready-at` when migrating an existing scheduler so the first due time matches the old system exactly.
 

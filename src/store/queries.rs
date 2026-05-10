@@ -55,6 +55,9 @@ impl<'a> QueryContext<'a> {
 
     fn resolve_continuation(&self, task: &TaskSummary) -> TaskContinuation {
         let mut continuation = task.continuation.clone();
+        if task.status == TaskStatus::Done {
+            return continuation;
+        }
 
         if continuation.next_subtask.is_none()
             && let Some(child) = self

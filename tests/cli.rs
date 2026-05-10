@@ -32,6 +32,9 @@ fn skill_command_is_natural_and_covers_command_surface() {
         "tli log",
         "tli dep add",
         "tli subtask add",
+        "tli sub add",
+        "--ready-at",
+        "local time",
         "--verbose",
         "--json",
         "--root",
@@ -279,6 +282,35 @@ fn scheduled_tasks_support_cron_interval_and_auto_rearm() {
 }
 
 #[test]
+fn ready_at_accepts_human_friendly_local_time_inputs() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    for (id, ready_at) in [
+        ("full-local", "2026-05-10 12:20:10"),
+        ("today-local", "12:20:10"),
+        ("month-day-local", "5-10 13:0:0"),
+    ] {
+        Command::cargo_bin("tli")
+            .unwrap()
+            .current_dir(temp.path())
+            .args(["add", id, "--id", id, "--ready-at", ready_at])
+            .assert()
+            .success();
+
+        let output = Command::cargo_bin("tli")
+            .unwrap()
+            .current_dir(temp.path())
+            .args(["--json", "show", id])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let detail: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(detail["task"]["ready_at"].as_str().unwrap().ends_with('Z'));
+    }
+}
+
+#[test]
 fn lifecycle_and_history_cover_start_block_review_note_done() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
@@ -404,7 +436,7 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
-        .args(["subtask", "add", &beta, &child])
+        .args(["sub", "add", &beta, &child])
         .assert()
         .success();
 
@@ -472,6 +504,65 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["depends_on"].as_array().unwrap().len(), 0);
     assert_eq!(detail["children"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn next_without_id_ignores_done_tasks_without_explicit_handoff() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    let done_without_handoff =
+        add_task(temp.path(), "done-without-handoff", "Done without handoff");
+    let done_with_handoff = add_task(temp.path(), "done-with-handoff", "Done with handoff");
+    let follow_up = add_task(temp.path(), "follow-up", "Follow up");
+    let checkpointed = add_task(temp.path(), "checkpointed", "Checkpointed");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", &done_without_handoff])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", &done_with_handoff, "--next-task", &follow_up])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["checkpoint", &checkpointed])
+        .assert()
+        .success();
+
+    let next = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "next", "--limit", "10"])
+        .output()
+        .unwrap();
+    assert!(next.status.success());
+    let next: Value = serde_json::from_slice(&next.stdout).unwrap();
+    let ids = next
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(!ids.contains(&"done-without-handoff"));
+    assert!(ids.contains(&"done-with-handoff"));
+    assert!(ids.contains(&"checkpointed"));
+
+    let state = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "state", "--limit", "10"])
+        .output()
+        .unwrap();
+    assert!(state.status.success());
+    let state: Value = serde_json::from_slice(&state.stdout).unwrap();
+    assert_eq!(state["counts"]["handoff"], 1);
 }
 
 #[test]

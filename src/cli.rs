@@ -74,7 +74,10 @@ pub enum Command {
     Note(NoteArgs),
     #[command(about = "Manage dependency links between tasks that gate ready status")]
     Dep(RelationArgs),
-    #[command(about = "Manage parent/child task relationships for decomposition")]
+    #[command(
+        alias = "sub",
+        about = "Manage parent/child task relationships for decomposition"
+    )]
     Subtask(SubtaskArgs),
     #[command(
         alias = "history",
@@ -96,8 +99,8 @@ pub struct AddArgs {
     pub summary: Option<String>,
     #[arg(
         long,
-        value_name = "RFC3339",
-        help = "Delay when the task becomes ready; must be an RFC3339 timestamp"
+        value_name = "TIME",
+        help = "Delay when the task becomes ready; accepts RFC3339 or local forms like '2026-05-10 12:20:10', '12:20:10', or '5-10 13:0:0'"
     )]
     pub ready_at: Option<String>,
     #[arg(
@@ -139,8 +142,8 @@ pub struct ScheduleArgs {
     pub cron: Option<String>,
     #[arg(
         long,
-        value_name = "RFC3339",
-        help = "Override the next ready time; must be an RFC3339 timestamp"
+        value_name = "TIME",
+        help = "Override the next ready time; accepts RFC3339 or local forms like '2026-05-10 12:20:10', '12:20:10', or '5-10 13:0:0'"
     )]
     pub ready_at: Option<String>,
     #[arg(
