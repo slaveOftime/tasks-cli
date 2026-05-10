@@ -507,7 +507,7 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
 }
 
 #[test]
-fn next_without_id_ignores_done_tasks_without_explicit_handoff() {
+fn next_without_id_resolves_done_handoffs_to_unfinished_targets() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
 
@@ -551,8 +551,21 @@ fn next_without_id_ignores_done_tasks_without_explicit_handoff() {
         .map(|item| item["id"].as_str().unwrap())
         .collect::<Vec<_>>();
     assert!(!ids.contains(&"done-without-handoff"));
-    assert!(ids.contains(&"done-with-handoff"));
+    assert!(!ids.contains(&"done-with-handoff"));
+    assert!(ids.contains(&"follow-up"));
     assert!(ids.contains(&"checkpointed"));
+
+    let handoff = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "next", &done_with_handoff])
+        .output()
+        .unwrap();
+    assert!(handoff.status.success());
+    let handoff: Value = serde_json::from_slice(&handoff.stdout).unwrap();
+    assert_eq!(handoff["id"], "done-with-handoff");
+    assert_eq!(handoff["status"], "done");
+    assert_eq!(handoff["next"]["next_task"], "follow-up");
 
     let state = Command::cargo_bin("tli")
         .unwrap()
@@ -563,6 +576,63 @@ fn next_without_id_ignores_done_tasks_without_explicit_handoff() {
     assert!(state.status.success());
     let state: Value = serde_json::from_slice(&state.stdout).unwrap();
     assert_eq!(state["counts"]["handoff"], 1);
+}
+
+#[test]
+fn next_without_id_follows_done_handoff_chains_and_dependency_graph() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    let wrapper = add_task(temp.path(), "wrapper", "Wrapper");
+    let middle = add_task(temp.path(), "middle", "Middle");
+    let final_target = add_task(temp.path(), "final-target", "Final target");
+    let dependency = add_task(temp.path(), "dependency", "Dependency");
+    let dependent = add_task(temp.path(), "dependent", "Dependent");
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["dep", "add", &dependent, &dependency])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", &middle, "--next-task", &final_target])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", &wrapper, "--next-task", &middle])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", &dependency, "--next-step", "Dependency complete"])
+        .assert()
+        .success();
+
+    let next = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "next", "--limit", "10"])
+        .output()
+        .unwrap();
+    assert!(next.status.success());
+    let next: Value = serde_json::from_slice(&next.stdout).unwrap();
+    let ids = next
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(!ids.contains(&"wrapper"));
+    assert!(!ids.contains(&"middle"));
+    assert!(!ids.contains(&"dependency"));
+    assert!(ids.contains(&"final-target"));
+    assert!(ids.contains(&"dependent"));
 }
 
 #[test]

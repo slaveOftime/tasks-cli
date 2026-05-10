@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use chrono::Utc;
@@ -111,6 +111,56 @@ impl<'a> QueryContext<'a> {
             .take(limit)
             .map(|task| self.build_state_task(task))
             .collect()
+    }
+
+    fn resolve_done_handoff_target(
+        &self,
+        task: &TaskSummary,
+        visited: &mut BTreeSet<String>,
+    ) -> Option<TaskSummary> {
+        if !visited.insert(task.id.clone()) {
+            return None;
+        }
+
+        let continuation = self.resolve_continuation(task);
+        for next_id in [
+            continuation.next_subtask.as_deref(),
+            continuation.next_task.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(candidate) = self.index.tasks.get(next_id) {
+                if candidate.status != TaskStatus::Done {
+                    return Some(candidate.clone());
+                }
+                if let Some(target) = self.resolve_done_handoff_target(candidate, visited) {
+                    return Some(target);
+                }
+            }
+        }
+
+        let mut graph_targets = self
+            .children_by_parent
+            .get(&task.id)
+            .into_iter()
+            .flatten()
+            .filter(|candidate| candidate.status != TaskStatus::Done)
+            .cloned()
+            .collect::<Vec<_>>();
+        graph_targets.extend(
+            self.index
+                .tasks
+                .values()
+                .filter(|candidate| {
+                    candidate.status != TaskStatus::Done
+                        && candidate.depends_on.iter().any(|id| id == &task.id)
+                })
+                .cloned(),
+        );
+        graph_targets.sort_by(compare_summary_for_list);
+        graph_targets.dedup_by(|left, right| left.id == right.id);
+        graph_targets.into_iter().next()
     }
 
     fn build_counts(&self, tasks: &[TaskSummary]) -> crate::model::StateCounts {
@@ -316,13 +366,21 @@ impl TaskStore {
         let mut items = index
             .tasks
             .values()
-            .filter(|task| {
-                matches!(task.status, TaskStatus::Checkpoint | TaskStatus::Done)
-                    && !context.resolve_continuation(task).is_empty()
+            .filter_map(|task| {
+                if context.resolve_continuation(task).is_empty() {
+                    return None;
+                }
+                match task.status {
+                    TaskStatus::Checkpoint => Some(task.clone()),
+                    TaskStatus::Done => {
+                        context.resolve_done_handoff_target(task, &mut BTreeSet::new())
+                    }
+                    _ => None,
+                }
             })
-            .cloned()
             .collect::<Vec<_>>();
         items.sort_by(compare_summary_for_list);
+        items.dedup_by(|left, right| left.id == right.id);
         let mut tasks = items
             .into_iter()
             .map(|task| context.build_state_task(task))

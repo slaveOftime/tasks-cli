@@ -151,7 +151,7 @@ That payload is meant to stay cheap and actionable. A good pattern for agents is
 
 1. read `state`
 2. surface `ready`, `pending_dependencies`, and `active`
-3. drill into `show`, `next`, or `log` only for the task that actually needs detail
+3. use aggregate `next` for real unfinished continuation targets, then drill into `show`, `next <task-id>`, or `log` only for the task that actually needs detail
 
 Useful follow-up commands:
 
@@ -236,7 +236,7 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Show compact repo state | `tli state [--query text] [--limit n]` |
-| Show continuation hints | `tli next [task-id]` |
+| Show continuation hints | `tli next [task-id]` (`tli next` resolves done handoffs to unfinished targets; `tli next <task-id>` inspects one task's stored handoff) |
 | Inspect a task | `tli show <task-id>` |
 | Start work | `tli start <task-id>` |
 | Save a checkpoint | `tli checkpoint <task-id>` |

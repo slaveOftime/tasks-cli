@@ -61,6 +61,8 @@ tli next
 tli show <task-id> --verbose
 ```
 
+Aggregate `tli next` resolves completed handoffs through explicit `next_task`/`next_subtask` hints and the task graph so the default list points at unfinished follow-up work instead of completed wrapper tasks. Use `tli next <task-id>` when you need to inspect the stored handoff on a specific completed task.
+
 Most commands that take a task id also accept a unique id prefix, so humans usually do not need to type the full stored id:
 
 ```powershell
@@ -125,7 +127,7 @@ Continuation hints have three lanes:
 2. `--next-subtask` for the child task to pick up next
 3. `--next-task` for the next sibling, follow-up, or separate task
 
-If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible for unfinished tasks. Done tasks only appear in `tli next`/handoff lists when they have explicit continuation hints such as `--next-step`, `--next-subtask`, or `--next-task`. Starting a task clears stored continuation hints because the task is active again.
+If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible for unfinished tasks. Aggregate `tli next` follows completed handoffs to unfinished child, dependent, sibling, or follow-up tasks, while `tli next <task-id>` still shows an individual done task's explicit continuation hints. Starting a task clears stored continuation hints because the task is active again.
 
 ## Scheduled tasks
 
