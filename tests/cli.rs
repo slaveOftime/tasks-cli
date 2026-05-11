@@ -52,7 +52,7 @@ fn skill_command_has_json_form_for_agents() {
         .unwrap();
     assert!(output.status.success());
     let skill: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(skill["path"], "skills/til/SKILL.md");
+    assert_eq!(skill["path"], "skills/tli/SKILL.md");
     assert!(
         skill["content"]
             .as_str()

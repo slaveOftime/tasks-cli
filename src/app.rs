@@ -16,7 +16,7 @@ use crate::output::{
 use crate::root::{parse_timestamp, resolve_root};
 use crate::store::{AddTaskInput, ListFilter, ProgressUpdate, ScheduleUpdate, TaskStore};
 
-const SKILL_DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/skills/til/SKILL.md"));
+const SKILL_DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/skills/tli/SKILL.md"));
 
 pub fn run<I, T>(args: I) -> Result<()>
 where
@@ -62,7 +62,7 @@ where
 fn handle_skill(json: bool) -> Result<()> {
     if json {
         return print_json(&serde_json::json!({
-            "path": "skills/til/SKILL.md",
+            "path": "skills/tli/SKILL.md",
             "content": SKILL_DOC,
         }));
     }
