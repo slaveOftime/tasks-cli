@@ -16,7 +16,7 @@ fn skill_command_is_natural_and_covers_command_surface() {
 
     for expected in [
         "Quick start",
-        "Recommended agent and Jarvis hook flow",
+        "Recommended agent hook flow",
         "tli add",
         "tli schedule",
         "tli list",
