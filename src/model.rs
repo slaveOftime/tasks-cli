@@ -69,14 +69,12 @@ pub struct TaskContinuation {
     #[serde(default)]
     pub next_step: Option<String>,
     #[serde(default)]
-    pub next_subtask: Option<String>,
-    #[serde(default)]
     pub next_task: Option<String>,
 }
 
 impl TaskContinuation {
     pub fn is_empty(&self) -> bool {
-        self.next_step.is_none() && self.next_subtask.is_none() && self.next_task.is_none()
+        self.next_step.is_none() && self.next_task.is_none()
     }
 }
 
@@ -95,8 +93,6 @@ pub struct TaskSummary {
     pub labels: Vec<String>,
     #[serde(default)]
     pub depends_on: Vec<String>,
-    #[serde(default)]
-    pub parent: Option<String>,
     #[serde(default)]
     pub continuation: TaskContinuation,
 }
@@ -185,8 +181,6 @@ pub struct TaskDetail {
     pub missing_dependencies: Vec<String>,
     #[serde(default)]
     pub blocked_by: Vec<TaskSummary>,
-    #[serde(default)]
-    pub children: Vec<TaskSummary>,
     pub ready: bool,
     #[serde(default)]
     pub next: TaskContinuation,
@@ -196,8 +190,10 @@ pub struct TaskDetail {
 pub struct ReadyTask {
     #[serde(flatten)]
     pub task: TaskSummary,
+    pub ready: bool,
     pub dependency_count: usize,
-    pub child_count: usize,
+    #[serde(default)]
+    pub missing_dependencies: Vec<String>,
     #[serde(default)]
     pub next: TaskContinuation,
 }
@@ -208,7 +204,6 @@ pub struct StateTask {
     pub task: TaskSummary,
     pub ready: bool,
     pub dependency_count: usize,
-    pub child_count: usize,
     #[serde(default)]
     pub next: TaskContinuation,
 }

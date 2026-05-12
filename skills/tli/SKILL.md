@@ -31,7 +31,7 @@ tli --verbose show <task-id>
 tli --json show <task-id>
 ```
 
-## Recommended agent and Jarvis hook flow
+## Recommended agent hook flow
 
 Use `state` first because it reads the summary index and returns cheap counts plus short actionable lines:
 
@@ -61,9 +61,9 @@ tli next
 tli show <task-id> --verbose
 ```
 
-Aggregate `tli next` resolves completed handoffs through explicit `next_task`/`next_subtask` hints and the task graph so the default list points at unfinished follow-up work instead of completed wrapper tasks. Use `tli next <task-id>` when you need to inspect the stored handoff on a specific completed task.
+Aggregate `tli next` resolves completed handoffs through explicit `next_task` hints and the task graph so the default list points at unfinished follow-up work instead of completed wrapper tasks. Use `tli next <task-id>` when you need to inspect the stored handoff on a specific completed task.
 
-Most commands that take a task id also accept a unique id prefix, so humans usually do not need to type the full stored id:
+Most commands that take a task id also accept a case-insensitive partial id match, so humans usually do not need to type the full stored id:
 
 ```powershell
 tli show daily-news
@@ -71,44 +71,93 @@ tli done nightly
 tli dep add parser-cache benchmark
 ```
 
-If a prefix matches more than one task, `tli` fails safely and shows the matching ids.
+If a partial match finds more than one task, `tli` fails safely and shows the matching ids.
 
 ## Core commands
 
 | Need | Command |
 | --- | --- |
 | Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at time] [--cron expr \| --every-minutes n] [--label tag]` |
-| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time]` |
-| List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
+| Add, change, or clear a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time] [--clear]` |
+| List tasks | `tli list [--status todo] [--ready] [--label tag] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Compact hook state | `tli state [--query text] [--limit n]` |
 | Inspect one task | `tli show <task-id> [--verbose]` |
 | Start work | `tli start <task-id> [--note text]` |
-| Save a pause point | `tli checkpoint <task-id> [--note text] [--next-step text] [--next-subtask id] [--next-task id]` |
+| Save a pause point | `tli checkpoint <task-id> [--note text] [--next-step text] [--next-task id]` |
 | Block work | `tli block <task-id> --reason text` |
 | Request review | `tli review <task-id> [--note text]` |
-| Finish work | `tli done <task-id> [--note text] [--next-step text] [--next-subtask id] [--next-task id]` |
+| Finish work | `tli done <task-id> [--note text] [--next-step text] [--next-task id] [--clear-schedule]` |
 | Add context | `tli note <task-id> "text"` |
 | View history | `tli log [task-id] [--limit n]` |
 | Print this guide | `tli skill` |
 
-## Dependencies and subtasks
+## Dependencies
 
-Use dependencies for hard prerequisites and subtasks for decomposition.
+Use dependencies when one task is **not actually actionable** until another task finishes.
 
 ```powershell
 tli dep add <task-id> <dependency-id>
 tli dep remove <task-id> <dependency-id>
-tli subtask add <parent-id> <child-id>
-tli sub add <parent-id> <child-id>
-tli subtask remove <parent-id> <child-id>
 ```
 
-- A task is `ready` only when it is `todo`, its `ready_at` time has arrived, and every dependency is `done`.
-- A subtask does not block its parent automatically; use `dep add` when the parent must wait.
-- If you split a larger task into children and the parent truly depends on one child finishing first, keep both relationships: `subtask add` for structure and `dep add` for gating readiness.
-- `tli show <task-id>` exposes `blocked_by` and `children`, and `tli next <task-id>` can infer a ready child or ready dependency-follow-up when that helps resume work.
-- `tli next <task-id>` can infer a ready child as `next_subtask`.
+### When to use a dependency
+
+Add a dependency when the answer to **"can I do this now?"** is **no** until another task is done.
+
+Good fits:
+
+- `release-notes` depends on `ship-v0-3-0`
+- `benchmark-parser` depends on `parser-cache`
+- `deploy-prod` depends on `approve-release`
+
+Do **not** add a dependency just because tasks are related, in the same area, or probably happen in sequence. Use separate tasks without a dependency when either task could still be worked on independently.
+
+### How dependencies affect behavior
+
+- A task is `ready` only when it is `todo`, its `ready_at` time has arrived, and **all** dependencies are `done`.
+- A due task with unfinished dependencies moves into `pending_dependencies` in `tli state` instead of `ready`.
+- `tli show <task-id>` exposes `blocked_by` so you can see exactly what is preventing work.
+- `tli next <task-id>` can infer a ready dependency as the next thing to pick up when that helps resume work.
+
+### Practical workflow
+
+```powershell
+tli add "Parser cache" --id parser-cache
+tli add "Benchmark parser" --id benchmark-parser
+tli dep add benchmark-parser parser-cache
+tli state
+tli show benchmark-parser
+```
+
+In that flow:
+
+1. `benchmark-parser` stays out of `ready` until `parser-cache` is done.
+2. `tli state` shows it under `pending_dependencies` once it is otherwise due.
+3. `tli show benchmark-parser` shows `blocked_by: parser-cache`.
+
+### Dependency direction
+
+Read `tli dep add <task> <dependency>` as:
+
+> **task** depends on **dependency**
+
+Example:
+
+```powershell
+tli dep add benchmark-parser parser-cache
+```
+
+means:
+
+- work on `parser-cache` first
+- `benchmark-parser` is blocked until `parser-cache` is done
+
+If you ever hesitate about order, ask:
+
+> "Which task must be finished first?"
+
+That earlier task is the **dependency**.
 
 ## Continuation flows
 
@@ -116,18 +165,16 @@ Use continuation hints when a task reaches a checkpoint or finished handoff stat
 
 ```powershell
 tli checkpoint <task-id> --note "Parser works; benchmarks left" --next-step "Run parser benchmarks"
-tli checkpoint <task-id> --next-subtask benchmark-parser-cache
 tli done <task-id> --next-task write-release-note
 tli next <task-id>
 ```
 
-Continuation hints have three lanes:
+Continuation hints have two lanes:
 
 1. `--next-step` for the immediate step inside the same task
-2. `--next-subtask` for the child task to pick up next
-3. `--next-task` for the next sibling, follow-up, or separate task
+2. `--next-task` for the next sibling, follow-up, or separate task
 
-If `next_subtask` or `next_task` is omitted, `tli` infers them from ready child tasks and ready top-level tasks when possible for unfinished tasks. Aggregate `tli next` follows completed handoffs to unfinished child, dependent, sibling, or follow-up tasks, while `tli next <task-id>` still shows an individual done task's explicit continuation hints. Starting a task clears stored continuation hints because the task is active again.
+If `next_task` is omitted, `tli` can infer it from ready dependencies and ready top-level tasks when possible for unfinished tasks. Aggregate `tli next` follows completed handoffs to unfinished dependent, sibling, or follow-up tasks, while `tli next <task-id>` still shows an individual done task's explicit continuation hints. Starting a task clears stored continuation hints because the task is active again.
 
 ## Scheduled tasks
 
@@ -138,10 +185,13 @@ tli add "Nightly cleanup" --cron "0 22 * * *"
 tli add "Daily review" --every-minutes 1440
 tli schedule nightly-cleanup --cron "0 23 * * *"
 tli done nightly-cleanup --note "Reviewed current worktree"
+tli done nightly-cleanup --clear-schedule --note "Retired this recurring task"
 ```
 
 - `--cron` accepts a standard 5-field cron expression (`minute hour day-of-month month day-of-week`).
 - `--every-minutes` is useful for fixed-interval loops.
+- `--clear` removes the recurring schedule and its pending scheduled `ready_at`.
+- `tli done --clear-schedule` completes a scheduled task permanently instead of re-arming the next cycle.
 - `--ready-at` accepts RFC3339 timestamps plus human-friendly local time: `2026-05-10 12:20:10`, `12:20:10` for today, and `5-10 13:0:0` for the current year.
 - Scheduled tasks stay `todo`; when you run `tli done`, the current cycle is recorded and the task is re-armed with the next `ready_at`.
 - Pass `--ready-at` when migrating an existing scheduler so the first due time matches the old system exactly.

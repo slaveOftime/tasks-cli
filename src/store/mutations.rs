@@ -10,7 +10,7 @@ use super::{
     AddTaskInput, ProgressUpdate, ScheduleUpdate, TaskStore,
     helpers::{
         describe_progress_message, ensure_distinct, ensure_task_exists, has_dependency_path,
-        has_parent_path, next_scheduled_ready_at, normalize_labels, normalize_optional_text,
+        next_scheduled_ready_at, normalize_labels, normalize_optional_text,
         normalize_required_text, resolve_ready_at, slugify, validate_schedule,
     },
 };
@@ -33,7 +33,6 @@ impl TaskStore {
                 schedule,
                 labels: normalize_labels(input.labels),
                 depends_on: Vec::new(),
-                parent: None,
                 continuation: TaskContinuation::default(),
             },
             summary_text: normalize_optional_text(input.summary_text),
@@ -157,6 +156,7 @@ impl TaskStore {
                     bail!("--clear cannot be combined with --cron, --every-minutes, or --ready-at");
                 }
                 task.summary.schedule = None;
+                task.summary.ready_at = None;
                 return Ok("schedule cleared".to_string());
             }
 
@@ -191,6 +191,16 @@ impl TaskStore {
                     at: now,
                     text: note.clone(),
                 });
+            }
+
+            if update.clear_schedule {
+                task.summary.schedule = None;
+                task.summary.ready_at = None;
+                task.summary.status = TaskStatus::Done;
+                return Ok(describe_progress_message(
+                    "task completed; schedule cleared",
+                    &task.summary.continuation,
+                ));
             }
 
             if let Some(schedule) = task.summary.schedule.as_ref() {
@@ -298,75 +308,6 @@ impl TaskStore {
             message: format!("dependency removed: {dependency_id}"),
         })?;
         Ok(task)
-    }
-
-    pub fn add_subtask(&self, parent_id: &str, child_id: &str) -> Result<TaskRecord> {
-        let _lock = self.acquire_write_lock()?;
-        let mut index = self.read_index()?;
-        let parent_id = self.resolve_task_reference_in_index(&index, parent_id)?;
-        let child_id = self.resolve_task_reference_in_index(&index, child_id)?;
-        ensure_distinct(&parent_id, &child_id, "subtask")?;
-        ensure_task_exists(&index, &parent_id)?;
-        ensure_task_exists(&index, &child_id)?;
-        if has_parent_path(&index, &parent_id, &child_id) {
-            bail!(
-                "cannot add subtask '{}' under '{}' because it would create a parent cycle",
-                child_id,
-                parent_id
-            );
-        }
-
-        let mut child = self.read_task_by_id(&child_id)?;
-        if child.summary.parent.as_deref() == Some(&parent_id) {
-            bail!("task '{child_id}' is already a subtask of '{parent_id}'");
-        }
-        if let Some(existing) = child.summary.parent.as_deref() {
-            bail!("task '{child_id}' is already a subtask of '{existing}'; remove it first");
-        }
-
-        child.summary.parent = Some(parent_id.clone());
-        child.summary.updated_at = Utc::now();
-        index
-            .tasks
-            .insert(child.summary.id.clone(), child.summary.clone());
-        self.write_task(&child)?;
-        self.write_index(&index)?;
-        self.append_event(TaskEvent {
-            at: child.summary.updated_at,
-            task_id: child.summary.id.clone(),
-            kind: TaskEventKind::SubtaskAdded,
-            status: Some(child.summary.status),
-            message: format!("task is now a subtask of {parent_id}"),
-        })?;
-        Ok(child)
-    }
-
-    pub fn remove_subtask(&self, parent_id: &str, child_id: &str) -> Result<TaskRecord> {
-        let _lock = self.acquire_write_lock()?;
-        let mut index = self.read_index()?;
-        let parent_id = self.resolve_task_reference_in_index(&index, parent_id)?;
-        let child_id = self.resolve_task_reference_in_index(&index, child_id)?;
-        ensure_task_exists(&index, &child_id)?;
-        let mut child = self.read_task_by_id(&child_id)?;
-        if child.summary.parent.as_deref() != Some(&parent_id) {
-            bail!("task '{child_id}' is not a subtask of '{parent_id}'");
-        }
-
-        child.summary.parent = None;
-        child.summary.updated_at = Utc::now();
-        index
-            .tasks
-            .insert(child.summary.id.clone(), child.summary.clone());
-        self.write_task(&child)?;
-        self.write_index(&index)?;
-        self.append_event(TaskEvent {
-            at: child.summary.updated_at,
-            task_id: child.summary.id.clone(),
-            kind: TaskEventKind::SubtaskRemoved,
-            status: Some(child.summary.status),
-            message: format!("subtask removed from {parent_id}"),
-        })?;
-        Ok(child)
     }
 
     fn update_task_resolved<F>(

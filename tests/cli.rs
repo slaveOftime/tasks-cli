@@ -31,8 +31,6 @@ fn skill_command_is_natural_and_covers_command_surface() {
         "tli note",
         "tli log",
         "tli dep add",
-        "tli subtask add",
-        "tli sub add",
         "--ready-at",
         "local time",
         "--verbose",
@@ -79,7 +77,9 @@ fn help_output_explains_human_and_json_usage() {
         .args(["show", "--help"])
         .assert()
         .success()
-        .stdout(contains("Task id or unique prefix to inspect"))
+        .stdout(contains(
+            "Task id or case-insensitive partial id to inspect",
+        ))
         .stdout(contains("human-friendly terminal output"));
 
     Command::cargo_bin("tli")
@@ -167,7 +167,62 @@ fn add_query_list_and_show_cover_compact_verbose_and_json_modes() {
 }
 
 #[test]
-fn unique_task_id_prefixes_work_and_ambiguous_prefixes_fail_safely() {
+fn list_supports_label_filters() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Parser cache",
+            "--id",
+            "parser-cache",
+            "--label",
+            "rust",
+            "--label",
+            "perf",
+        ])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Docs cleanup",
+            "--id",
+            "docs-cleanup",
+            "--label",
+            "docs",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["list", "--label", "RUST"])
+        .assert()
+        .success()
+        .stdout(contains("parser-cache"))
+        .stdout(predicates::str::contains("docs-cleanup").not());
+
+    let output = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "list", "--label", "rust,perf"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let tasks: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(tasks.as_array().unwrap().len(), 1);
+    assert_eq!(tasks[0]["id"], "parser-cache");
+}
+
+#[test]
+fn partial_task_id_matches_are_case_insensitive_and_ambiguous_matches_fail_safely() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
 
@@ -179,7 +234,7 @@ fn unique_task_id_prefixes_work_and_ambiguous_prefixes_fail_safely() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
-        .args(["show", "daily-news"])
+        .args(["show", "NEWS"])
         .assert()
         .success()
         .stdout(contains("Prepare daily news"));
@@ -187,7 +242,7 @@ fn unique_task_id_prefixes_work_and_ambiguous_prefixes_fail_safely() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
-        .args(["note", "daily-news", "Needs source review"])
+        .args(["note", "NEWS", "Needs source review"])
         .assert()
         .success()
         .stdout(contains("Updated"))
@@ -196,7 +251,7 @@ fn unique_task_id_prefixes_work_and_ambiguous_prefixes_fail_safely() {
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
-        .args(["dep", "add", "parser", "benchmark"])
+        .args(["dep", "add", "CACHE", "Bench"])
         .assert()
         .success()
         .stdout(contains("Linked parser-cache -> benchmark-parser"));
@@ -279,6 +334,89 @@ fn scheduled_tasks_support_cron_interval_and_auto_rearm() {
     let state: Value = serde_json::from_slice(&state.stdout).unwrap();
     assert_eq!(state["counts"]["done"], 0);
     assert!(state["counts"]["todo"].as_u64().unwrap() >= 1);
+}
+
+#[test]
+fn done_supports_clear_schedule_for_scheduled_tasks() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Nightly cleanup",
+            "--id",
+            "nightly",
+            "--every-minutes",
+            "60",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["done", "nightly", "--clear-schedule", "--note", "Retired"])
+        .assert()
+        .success()
+        .stdout(contains("[done]"))
+        .stdout(predicates::str::contains("schedule:").not());
+
+    let detail = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "show", "nightly"])
+        .output()
+        .unwrap();
+    assert!(detail.status.success());
+    let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
+    assert_eq!(detail["task"]["status"], "done");
+    assert!(detail["task"]["schedule"].is_null());
+    assert!(detail["task"]["ready_at"].is_null());
+    assert_eq!(detail["task"]["completed_note"], "Retired");
+}
+
+#[test]
+fn schedule_clear_removes_schedule_ready_at_and_uses_clear_message() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Nightly cleanup",
+            "--id",
+            "nightly",
+            "--every-minutes",
+            "60",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["schedule", "nightly", "--clear"])
+        .assert()
+        .success()
+        .stdout(contains("Cleared schedule"))
+        .stdout(predicates::str::contains("schedule:").not());
+
+    let detail = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "show", "nightly"])
+        .output()
+        .unwrap();
+    assert!(detail.status.success());
+    let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
+    assert!(detail["task"]["schedule"].is_null());
+    assert!(detail["task"]["ready_at"].is_null());
+    assert_eq!(detail["ready"], true);
 }
 
 #[test]
@@ -419,24 +557,17 @@ fn lifecycle_and_history_cover_start_block_review_note_done() {
 }
 
 #[test]
-fn dependency_and_subtask_links_support_ready_and_removal_flows() {
+fn dependency_links_support_ready_and_removal_flows() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
 
     let alpha = add_task(temp.path(), "alpha", "Alpha");
     let beta = add_task(temp.path(), "beta", "Beta");
-    let child = add_task(temp.path(), "child", "Child");
 
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
         .args(["dep", "add", &beta, &alpha])
-        .assert()
-        .success();
-    Command::cargo_bin("tli")
-        .unwrap()
-        .current_dir(temp.path())
-        .args(["sub", "add", &beta, &child])
         .assert()
         .success();
 
@@ -455,7 +586,7 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
         .map(|item| item["id"].as_str().unwrap())
         .collect::<Vec<_>>();
     ids.sort_unstable();
-    assert_eq!(ids, vec!["alpha", "child"]);
+    assert_eq!(ids, vec!["alpha"]);
 
     Command::cargo_bin("tli")
         .unwrap()
@@ -464,9 +595,7 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
         .assert()
         .success()
         .stdout(contains("Blocked by"))
-        .stdout(contains("Children"))
-        .stdout(contains("alpha"))
-        .stdout(contains("child"));
+        .stdout(contains("alpha"));
 
     let detail = Command::cargo_bin("tli")
         .unwrap()
@@ -476,21 +605,20 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
         .unwrap();
     assert!(detail.status.success());
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
-    assert_eq!(detail["blocked_by"][0]["id"], "alpha");
-    assert_eq!(detail["children"][0]["id"], "child");
-    assert_eq!(detail["next"]["next_subtask"], "child");
+    let blocked_by = detail["blocked_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(blocked_by.contains(&"alpha"));
+    assert_eq!(detail["task"]["depends_on"].as_array().unwrap().len(), 1);
     assert_eq!(detail["next"]["next_task"], "alpha");
 
     Command::cargo_bin("tli")
         .unwrap()
         .current_dir(temp.path())
         .args(["dep", "remove", &beta, &alpha])
-        .assert()
-        .success();
-    Command::cargo_bin("tli")
-        .unwrap()
-        .current_dir(temp.path())
-        .args(["subtask", "remove", &beta, &child])
         .assert()
         .success();
 
@@ -503,7 +631,6 @@ fn dependency_and_subtask_links_support_ready_and_removal_flows() {
     assert!(detail.status.success());
     let detail: Value = serde_json::from_slice(&detail.stdout).unwrap();
     assert_eq!(detail["task"]["depends_on"].as_array().unwrap().len(), 0);
-    assert_eq!(detail["children"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -732,21 +859,68 @@ fn ready_command_has_distinct_verbose_mode() {
 }
 
 #[test]
+fn ready_lists_due_scheduled_tasks_with_dependency_warnings() {
+    let temp = TempDir::new().unwrap();
+    init_store(temp.path());
+
+    let dependency = add_task(temp.path(), "dep", "Dependency");
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args([
+            "add",
+            "Scheduled cleanup",
+            "--id",
+            "scheduled-cleanup",
+            "--every-minutes",
+            "60",
+            "--ready-at",
+            "2020-01-01T00:00:00Z",
+        ])
+        .assert()
+        .success();
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["dep", "add", "scheduled-cleanup", &dependency])
+        .assert()
+        .success();
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["ready"])
+        .assert()
+        .success()
+        .stdout(contains("scheduled-cleanup"))
+        .stdout(contains("warning: scheduled but blocked by dep"));
+
+    let ready = Command::cargo_bin("tli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["--json", "ready"])
+        .output()
+        .unwrap();
+    assert!(ready.status.success());
+    let ready: Value = serde_json::from_slice(&ready.stdout).unwrap();
+    let scheduled = ready
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == "scheduled-cleanup")
+        .unwrap();
+    assert_eq!(scheduled["ready"], false);
+    assert_eq!(scheduled["missing_dependencies"][0], "dep");
+}
+
+#[test]
 fn checkpoint_done_next_and_state_support_continuation_handoffs() {
     let temp = TempDir::new().unwrap();
     init_store(temp.path());
 
     let alpha = add_task(temp.path(), "alpha", "Alpha");
     let beta = add_task(temp.path(), "beta", "Beta");
-    let child = add_task(temp.path(), "child", "Child");
     let handoff = add_task(temp.path(), "handoff", "Handoff");
-
-    Command::cargo_bin("tli")
-        .unwrap()
-        .current_dir(temp.path())
-        .args(["subtask", "add", &alpha, &child])
-        .assert()
-        .success();
 
     Command::cargo_bin("tli")
         .unwrap()
@@ -774,7 +948,6 @@ fn checkpoint_done_next_and_state_support_continuation_handoffs() {
     let next_task: Value = serde_json::from_slice(&next.stdout).unwrap();
     assert_eq!(next_task["status"], "checkpoint");
     assert_eq!(next_task["next"]["next_step"], "Resume API wiring");
-    assert_eq!(next_task["next"]["next_subtask"], "child");
     assert_eq!(next_task["next"]["next_task"], "beta");
 
     Command::cargo_bin("tli")

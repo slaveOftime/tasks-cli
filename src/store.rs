@@ -36,8 +36,8 @@ pub struct ScheduleUpdate {
 pub struct ProgressUpdate {
     pub note: Option<String>,
     pub next_step: Option<String>,
-    pub next_subtask: Option<String>,
     pub next_task: Option<String>,
+    pub clear_schedule: bool,
 }
 
 impl ProgressUpdate {
@@ -45,15 +45,14 @@ impl ProgressUpdate {
         Self {
             note: helpers::normalize_optional_text(self.note),
             next_step: helpers::normalize_optional_text(self.next_step),
-            next_subtask: helpers::normalize_optional_text(self.next_subtask),
             next_task: helpers::normalize_optional_text(self.next_task),
+            clear_schedule: self.clear_schedule,
         }
     }
 
     pub(crate) fn continuation(&self) -> TaskContinuation {
         TaskContinuation {
             next_step: self.next_step.clone(),
-            next_subtask: self.next_subtask.clone(),
             next_task: self.next_task.clone(),
         }
     }
@@ -64,6 +63,7 @@ pub struct ListFilter {
     pub statuses: Vec<TaskStatus>,
     pub include_done_by_default: bool,
     pub ready_only: bool,
+    pub labels: Vec<String>,
     pub query: Option<String>,
     pub limit: Option<usize>,
 }

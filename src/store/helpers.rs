@@ -55,6 +55,12 @@ pub(super) fn match_status_filter(task: &TaskSummary, filter: &ListFilter) -> bo
     filter.include_done_by_default || task.status != TaskStatus::Done
 }
 
+pub(super) fn match_label_filter(task: &TaskSummary, labels: &[String]) -> bool {
+    labels
+        .iter()
+        .all(|label| task.labels.iter().any(|task_label| task_label == label))
+}
+
 pub(super) fn task_matches_query(task: &TaskSummary, query: &str) -> bool {
     task.id.to_lowercase().contains(query)
         || task.title.to_lowercase().contains(query)
@@ -73,7 +79,6 @@ fn schedule_matches_query(schedule: Option<&TaskSchedule>, query: &str) -> bool 
 fn continuation_matches_query(continuation: &TaskContinuation, query: &str) -> bool {
     [
         continuation.next_step.as_deref(),
-        continuation.next_subtask.as_deref(),
         continuation.next_task.as_deref(),
     ]
     .into_iter()
@@ -166,6 +171,10 @@ pub(super) fn is_ready_summary(task: &TaskSummary, index: &StoreIndex, now: Date
     is_due_summary(task, now) && !has_unmet_dependencies(task, index)
 }
 
+pub(super) fn is_due_scheduled_summary(task: &TaskSummary, now: DateTime<Utc>) -> bool {
+    is_due_summary(task, now) && task.schedule.is_some()
+}
+
 pub(super) fn is_pending_dependency_summary(
     task: &TaskSummary,
     index: &StoreIndex,
@@ -179,12 +188,20 @@ fn is_due_summary(task: &TaskSummary, now: DateTime<Utc>) -> bool {
 }
 
 fn has_unmet_dependencies(task: &TaskSummary, index: &StoreIndex) -> bool {
-    task.depends_on.iter().any(|dependency_id| {
-        index
-            .tasks
-            .get(dependency_id)
-            .is_none_or(|dependency| dependency.status != TaskStatus::Done)
-    })
+    !unmet_dependency_ids(task, index).is_empty()
+}
+
+pub(super) fn unmet_dependency_ids(task: &TaskSummary, index: &StoreIndex) -> Vec<String> {
+    task.depends_on
+        .iter()
+        .filter(|dependency_id| {
+            index
+                .tasks
+                .get(*dependency_id)
+                .is_none_or(|dependency| dependency.status != TaskStatus::Done)
+        })
+        .cloned()
+        .collect()
 }
 
 pub(super) fn describe_progress_message(prefix: &str, continuation: &TaskContinuation) -> String {
@@ -195,9 +212,6 @@ pub(super) fn describe_progress_message(prefix: &str, continuation: &TaskContinu
     let mut parts = Vec::new();
     if let Some(step) = continuation.next_step.as_deref() {
         parts.push(format!("step={step}"));
-    }
-    if let Some(subtask) = continuation.next_subtask.as_deref() {
-        parts.push(format!("subtask={subtask}"));
     }
     if let Some(task) = continuation.next_task.as_deref() {
         parts.push(format!("task={task}"));
@@ -223,7 +237,7 @@ pub(super) fn resolve_task_reference(index: &StoreIndex, task_id: &str) -> Resul
     let mut matches = index
         .tasks
         .values()
-        .filter(|task| task.id.starts_with(&lookup))
+        .filter(|task| task.id.to_lowercase().contains(&lookup))
         .collect::<Vec<_>>();
     matches.sort_by(|left, right| left.id.cmp(&right.id));
 
@@ -242,7 +256,7 @@ pub(super) fn resolve_task_reference(index: &StoreIndex, task_id: &str) -> Resul
             } else {
                 String::new()
             };
-            bail!("task id prefix '{requested}' is ambiguous; matches: {preview}{suffix}")
+            bail!("task id match '{requested}' is ambiguous; matches: {preview}{suffix}")
         }
     }
 }
@@ -270,20 +284,6 @@ pub(super) fn has_dependency_path(index: &StoreIndex, start: &str, target: &str)
         if let Some(task) = index.tasks.get(&current) {
             stack.extend(task.depends_on.iter().cloned());
         }
-    }
-    false
-}
-
-pub(super) fn has_parent_path(index: &StoreIndex, start_parent: &str, target_child: &str) -> bool {
-    let mut current = Some(start_parent);
-    while let Some(task_id) = current {
-        if task_id == target_child {
-            return true;
-        }
-        current = index
-            .tasks
-            .get(task_id)
-            .and_then(|task| task.parent.as_deref());
     }
     false
 }

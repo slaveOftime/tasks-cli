@@ -4,9 +4,8 @@ use anyhow::{Result, bail};
 use clap::Parser;
 
 use crate::cli::{
-    AddArgs, Cli, Command, DependencyArgs, ListArgs, LogArgs, NextArgs, ProgressArgs, ReadyArgs,
-    RelationArgs, RelationCommand, ScheduleArgs, StateArgs, StatusNoteArgs, SubtaskArgs,
-    SubtaskCommand, SubtaskLinkArgs,
+    AddArgs, Cli, Command, DependencyArgs, DoneArgs, ListArgs, LogArgs, NextArgs, ProgressArgs,
+    ReadyArgs, RelationArgs, RelationCommand, ScheduleArgs, StateArgs, StatusNoteArgs,
 };
 use crate::model::TaskSchedule;
 use crate::output::{
@@ -51,7 +50,6 @@ where
                     print_task_result(&task, cli.json, cli.verbose, "updated")
                 }
                 Command::Dep(args) => handle_dependency(&store, args, cli.json, cli.verbose),
-                Command::Subtask(args) => handle_subtask(&store, args, cli.json, cli.verbose),
                 Command::Log(args) => handle_log(&store, args, cli.json, cli.verbose),
                 Command::Skill => unreachable!("handled above"),
             }
@@ -101,7 +99,12 @@ fn handle_schedule(store: &TaskStore, args: ScheduleArgs, json: bool, verbose: b
             clear: args.clear,
         },
     )?;
-    print_task_result(&task, json, verbose, "scheduled")
+    let verb = if args.clear {
+        "cleared schedule"
+    } else {
+        "scheduled"
+    };
+    print_task_result(&task, json, verbose, verb)
 }
 
 fn handle_list(store: &TaskStore, args: ListArgs, json: bool, verbose: bool) -> Result<()> {
@@ -109,6 +112,7 @@ fn handle_list(store: &TaskStore, args: ListArgs, json: bool, verbose: bool) -> 
         statuses: args.status,
         include_done_by_default: args.all,
         ready_only: args.ready,
+        labels: args.labels,
         query: args.query,
         limit: args.limit,
     })?;
@@ -212,9 +216,9 @@ fn handle_review(store: &TaskStore, args: StatusNoteArgs, json: bool, verbose: b
     print_task_result(&task, json, verbose, "ready for review")
 }
 
-fn handle_done(store: &TaskStore, args: ProgressArgs, json: bool, verbose: bool) -> Result<()> {
+fn handle_done(store: &TaskStore, args: DoneArgs, json: bool, verbose: bool) -> Result<()> {
     let id = args.id.clone();
-    let task = store.complete_task(&id, progress_update(args))?;
+    let task = store.complete_task(&id, done_update(args))?;
     print_task_result(&task, json, verbose, "done")
 }
 
@@ -255,35 +259,6 @@ fn handle_dependency(
     }
 }
 
-fn handle_subtask(store: &TaskStore, args: SubtaskArgs, json: bool, verbose: bool) -> Result<()> {
-    match args.command {
-        SubtaskCommand::Add(SubtaskLinkArgs { parent, child }) => {
-            let parent = store.resolve_task_reference(&parent)?;
-            let child = store.resolve_task_reference(&child)?;
-            let updated = store.add_subtask(&parent, &child)?;
-            print_link_result(
-                store,
-                &updated.summary.id,
-                json,
-                verbose,
-                &format!("Linked {} under {}", updated.summary.id, parent),
-            )
-        }
-        SubtaskCommand::Remove(SubtaskLinkArgs { parent, child }) => {
-            let parent = store.resolve_task_reference(&parent)?;
-            let child = store.resolve_task_reference(&child)?;
-            let updated = store.remove_subtask(&parent, &child)?;
-            print_link_result(
-                store,
-                &updated.summary.id,
-                json,
-                verbose,
-                &format!("Removed {} from {}", updated.summary.id, parent),
-            )
-        }
-    }
-}
-
 fn handle_log(store: &TaskStore, args: LogArgs, json: bool, verbose: bool) -> Result<()> {
     let events = store.read_events(args.id.as_deref(), args.limit)?;
     if json {
@@ -301,8 +276,17 @@ fn progress_update(args: ProgressArgs) -> ProgressUpdate {
     ProgressUpdate {
         note: args.note,
         next_step: args.next_step,
-        next_subtask: args.next_subtask,
         next_task: args.next_task,
+        clear_schedule: false,
+    }
+}
+
+fn done_update(args: DoneArgs) -> ProgressUpdate {
+    ProgressUpdate {
+        note: args.note,
+        next_step: args.next_step,
+        next_task: args.next_task,
+        clear_schedule: args.clear_schedule,
     }
 }
 

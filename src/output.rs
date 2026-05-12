@@ -43,9 +43,6 @@ pub(crate) fn render_task_list(tasks: &[TaskSummary], verbose: bool, root: &Path
                     .map(|value| format!("schedule: {}", format_schedule(value))),
                 (!task.labels.is_empty()).then(|| format!("labels: {}", task.labels.join(", "))),
                 (!task.depends_on.is_empty()).then(|| format!("deps: {}", task.depends_on.len())),
-                task.parent
-                    .as_deref()
-                    .map(|value| format!("parent: {value}")),
                 continuation_summary(&task.continuation).map(|value| format!("next: {value}")),
             ])
         } else {
@@ -70,6 +67,12 @@ pub(crate) fn render_task_list(tasks: &[TaskSummary], verbose: bool, root: &Path
 pub(crate) fn render_ready_list(tasks: &[ReadyTask], verbose: bool, root: &Path) -> String {
     let mut output = format!("Ready tasks in {} ({})", display_path(root), tasks.len());
     for task in tasks {
+        let warning = (!task.missing_dependencies.is_empty()).then(|| {
+            format!(
+                "warning: scheduled but blocked by {}",
+                task.missing_dependencies.join(", ")
+            )
+        });
         let meta = if verbose {
             join_metadata([
                 Some(format!(
@@ -81,21 +84,21 @@ pub(crate) fn render_ready_list(tasks: &[ReadyTask], verbose: bool, root: &Path)
                     .as_ref()
                     .map(|value| format!("ready: {}", format_timestamp(value))),
                 (task.dependency_count > 0).then(|| format!("deps: {}", task.dependency_count)),
-                (task.child_count > 0).then(|| format!("children: {}", task.child_count)),
                 task.task
                     .schedule
                     .as_ref()
                     .map(|value| format!("schedule: {}", format_schedule(value))),
                 (!task.task.labels.is_empty())
                     .then(|| format!("labels: {}", task.task.labels.join(", "))),
+                warning.clone(),
                 continuation_summary(&task.next).map(|value| format!("next: {value}")),
             ])
         } else {
             join_metadata([
                 (task.dependency_count > 0).then(|| format!("deps: {}", task.dependency_count)),
-                (task.child_count > 0).then(|| format!("children: {}", task.child_count)),
                 (!task.task.labels.is_empty())
                     .then(|| format!("labels: {}", task.task.labels.join(", "))),
+                warning,
                 continuation_summary(&task.next).map(|value| format!("next: {value}")),
             ])
         };
@@ -216,12 +219,6 @@ pub(crate) fn render_task_detail(detail: &TaskDetail, verbose: bool) -> String {
             .map(|value| format!("schedule: {}", format_schedule(value))),
         (!detail.task.summary.labels.is_empty())
             .then(|| format!("labels: {}", detail.task.summary.labels.join(", "))),
-        detail
-            .task
-            .summary
-            .parent
-            .as_deref()
-            .map(|value| format!("parent: {value}")),
     ]);
     if let Some(meta) = base_meta {
         output.push('\n');
@@ -257,7 +254,6 @@ pub(crate) fn render_task_detail(detail: &TaskDetail, verbose: bool) -> String {
             &detail.missing_dependencies,
         ),
         format_count("blocked_by", detail.blocked_by.len()),
-        format_count("children", detail.children.len()),
         continuation_summary(&detail.next).map(|value| format!("next: {value}")),
     ]
     .into_iter()
@@ -279,10 +275,8 @@ pub(crate) fn render_task_detail(detail: &TaskDetail, verbose: bool) -> String {
             );
         }
         push_named_items(&mut output, "Blocked by", &detail.blocked_by, true);
-        push_named_items(&mut output, "Children", &detail.children, true);
     } else {
         push_named_items(&mut output, "Blocked by", &detail.blocked_by, false);
-        push_named_items(&mut output, "Children", &detail.children, false);
     }
 
     if let Some(reason) = detail.task.blocked_reason.as_deref() {
@@ -342,9 +336,6 @@ pub(crate) fn continuation_summary(continuation: &TaskContinuation) -> Option<St
     let mut parts = Vec::new();
     if let Some(step) = continuation.next_step.as_deref() {
         parts.push(format!("step: {step}"));
-    }
-    if let Some(subtask) = continuation.next_subtask.as_deref() {
-        parts.push(format!("subtask: {subtask}"));
     }
     if let Some(task) = continuation.next_task.as_deref() {
         parts.push(format!("task: {task}"));
@@ -441,7 +432,6 @@ fn render_state_meta(task: &StateTask, verbose: bool) -> Option<String> {
             .as_ref()
             .map(|value| format!("ready: {}", format_timestamp(value))),
         (task.dependency_count > 0).then(|| format!("deps: {}", task.dependency_count)),
-        (task.child_count > 0).then(|| format!("children: {}", task.child_count)),
         task.task
             .schedule
             .as_ref()
@@ -543,12 +533,11 @@ mod tests {
     fn continuation_summary_joins_present_fields() {
         let summary = continuation_summary(&TaskContinuation {
             next_step: Some("resume".to_string()),
-            next_subtask: Some("child".to_string()),
-            next_task: None,
+            next_task: Some("follow-up".to_string()),
         })
         .unwrap();
         assert!(summary.contains("step: resume"));
-        assert!(summary.contains("subtask: child"));
+        assert!(summary.contains("task: follow-up"));
     }
 
     #[test]

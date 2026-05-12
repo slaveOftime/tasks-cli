@@ -18,7 +18,7 @@ fn store_tracks_dependencies_ready_and_continuation() {
     let temp = TempDir::new().unwrap();
     let store = TaskStore::new(temp.path().join(".tli"));
 
-    for (id, title) in [("alpha", "Alpha"), ("beta", "Beta"), ("child", "Child")] {
+    for (id, title) in [("alpha", "Alpha"), ("beta", "Beta")] {
         store
             .add_task(AddTaskInput {
                 id: Some(id.to_string()),
@@ -32,7 +32,6 @@ fn store_tracks_dependencies_ready_and_continuation() {
     }
 
     store.add_dependency("beta", "alpha").unwrap();
-    store.add_subtask("beta", "child").unwrap();
 
     let ready = store.ready_tasks(None, None).unwrap();
     let mut ids = ready
@@ -40,7 +39,7 @@ fn store_tracks_dependencies_ready_and_continuation() {
         .map(|task| task.task.id.as_str())
         .collect::<Vec<_>>();
     ids.sort_unstable();
-    assert_eq!(ids, vec!["alpha", "child"]);
+    assert_eq!(ids, vec!["alpha"]);
 
     let checkpointed = store
         .checkpoint_task(
@@ -48,8 +47,8 @@ fn store_tracks_dependencies_ready_and_continuation() {
             ProgressUpdate {
                 note: Some("pause here".to_string()),
                 next_step: Some("resume api wiring".to_string()),
-                next_subtask: None,
                 next_task: None,
+                clear_schedule: false,
             },
         )
         .unwrap();
@@ -57,8 +56,29 @@ fn store_tracks_dependencies_ready_and_continuation() {
 
     let next = store.next_task("beta").unwrap();
     assert_eq!(next.next.next_step.as_deref(), Some("resume api wiring"));
-    assert_eq!(next.next.next_subtask.as_deref(), Some("child"));
     assert_eq!(next.next.next_task.as_deref(), Some("alpha"));
+}
+
+#[test]
+fn tasks_without_dependencies_can_infer_ready_top_level_next_task() {
+    let temp = TempDir::new().unwrap();
+    let store = TaskStore::new(temp.path().join(".tli"));
+
+    for (id, title) in [("alpha", "Alpha"), ("beta", "Beta")] {
+        store
+            .add_task(AddTaskInput {
+                id: Some(id.to_string()),
+                title: title.to_string(),
+                summary_text: None,
+                ready_at: None,
+                schedule: None,
+                labels: vec![],
+            })
+            .unwrap();
+    }
+
+    let detail = store.task_detail("alpha").unwrap();
+    assert_eq!(detail.next.next_task.as_deref(), Some("beta"));
 }
 
 #[test]
@@ -115,8 +135,8 @@ fn scheduled_tasks_rearm_to_todo_with_next_ready_at() {
             ProgressUpdate {
                 note: Some("Cycle done".to_string()),
                 next_step: None,
-                next_subtask: None,
                 next_task: None,
+                clear_schedule: false,
             },
         )
         .unwrap();
@@ -158,6 +178,121 @@ fn cron_schedules_rearm_in_local_time() {
     assert_eq!(next.hour(), 23);
     assert_eq!(next.minute(), 20);
     assert_eq!(next.date_naive().to_string(), "2026-05-03");
+}
+
+#[test]
+fn clearing_schedule_removes_pending_ready_at() {
+    let temp = TempDir::new().unwrap();
+    let store = TaskStore::new(temp.path().join(".tli"));
+
+    let task = store
+        .add_task(AddTaskInput {
+            id: Some("daily".to_string()),
+            title: "Daily review".to_string(),
+            summary_text: None,
+            ready_at: None,
+            schedule: Some(TaskSchedule::Interval { every_minutes: 60 }),
+            labels: vec![],
+        })
+        .unwrap();
+
+    assert!(task.summary.schedule.is_some());
+    assert!(task.summary.ready_at.is_some());
+
+    let cleared = store
+        .configure_schedule(
+            "daily",
+            ScheduleUpdate {
+                schedule: None,
+                ready_at: None,
+                clear: true,
+            },
+        )
+        .unwrap();
+
+    assert!(cleared.summary.schedule.is_none());
+    assert!(cleared.summary.ready_at.is_none());
+}
+
+#[test]
+fn completing_with_clear_schedule_finishes_scheduled_task_permanently() {
+    let temp = TempDir::new().unwrap();
+    let store = TaskStore::new(temp.path().join(".tli"));
+
+    store
+        .add_task(AddTaskInput {
+            id: Some("daily".to_string()),
+            title: "Daily review".to_string(),
+            summary_text: None,
+            ready_at: Some(
+                DateTime::parse_from_rfc3339("2026-05-02T08:00:00+08:00")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
+            schedule: Some(TaskSchedule::Interval {
+                every_minutes: 1440,
+            }),
+            labels: vec![],
+        })
+        .unwrap();
+
+    let completed = store
+        .complete_task(
+            "daily",
+            ProgressUpdate {
+                note: Some("Final cycle".to_string()),
+                next_step: None,
+                next_task: None,
+                clear_schedule: true,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(completed.summary.status, TaskStatus::Done);
+    assert!(completed.summary.schedule.is_none());
+    assert!(completed.summary.ready_at.is_none());
+    assert_eq!(completed.completed_note.as_deref(), Some("Final cycle"));
+}
+
+#[test]
+fn due_scheduled_tasks_with_unmet_dependencies_are_returned_with_warnings() {
+    let temp = TempDir::new().unwrap();
+    let store = TaskStore::new(temp.path().join(".tli"));
+
+    store
+        .add_task(AddTaskInput {
+            id: Some("dep".to_string()),
+            title: "Dependency".to_string(),
+            summary_text: None,
+            ready_at: None,
+            schedule: None,
+            labels: vec![],
+        })
+        .unwrap();
+    store
+        .add_task(AddTaskInput {
+            id: Some("scheduled".to_string()),
+            title: "Scheduled follow-up".to_string(),
+            summary_text: None,
+            ready_at: Some(
+                DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
+            schedule: Some(TaskSchedule::Interval { every_minutes: 60 }),
+            labels: vec![],
+        })
+        .unwrap();
+    store.add_dependency("scheduled", "dep").unwrap();
+
+    let ready = store.ready_tasks(None, None).unwrap();
+    let scheduled = ready
+        .iter()
+        .find(|task| task.task.id == "scheduled")
+        .unwrap();
+
+    assert!(!scheduled.ready);
+    assert_eq!(scheduled.missing_dependencies, vec!["dep"]);
 }
 
 #[test]

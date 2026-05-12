@@ -86,6 +86,8 @@ These commands are the fastest way to answer:
 - what is already in flight
 - what should continue after a checkpoint or handoff
 
+`tli ready` keeps dependency-blocked tasks out of the list by default. The exception is a scheduled task whose due time has arrived: it still appears in `ready`, but with a warning when unfinished dependencies are preventing the current cycle from actually starting.
+
 ### 2. Create and inspect tasks
 
 ```bash
@@ -97,7 +99,7 @@ tli --verbose show <task-id>
 tli --json show <task-id>
 ```
 
-Most commands that take a task id also accept a unique prefix, so you usually do not need to type the full stored id.
+Most commands that take a task id also accept a case-insensitive partial id match, so you usually do not need to type the full stored id.
 
 ### 3. Move work through the lifecycle
 
@@ -111,19 +113,14 @@ tli note <task-id> "Need benchmark follow-up"
 tli log <task-id> --limit 20
 ```
 
-### 4. Model prerequisites and decomposition
+### 4. Model prerequisites
 
 ```bash
 tli dep add <task-id> <dependency-id>
 tli dep remove <task-id> <dependency-id>
-tli subtask add <parent-id> <child-id>
-tli sub add <parent-id> <child-id>
-tli subtask remove <parent-id> <child-id>
 ```
 
 - dependencies gate readiness
-- subtasks model structure
-- a parent is not blocked by a child unless you also add a dependency
 
 ## Output modes
 
@@ -232,8 +229,8 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | --- | --- |
 | Print embedded usage help | `tli skill` |
 | Create a task | `tli add "Title" [--id id] [--summary text] [--ready-at time] [--cron expr \| --every-minutes n] [--label tag]` |
-| Add or change a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time]` |
-| List tasks | `tli list [--status todo] [--ready] [--query text] [--limit n] [--all]` |
+| Add, change, or clear a schedule | `tli schedule <task-id> [--cron expr \| --every-minutes n] [--ready-at time] [--clear]` |
+| List tasks | `tli list [--status todo] [--ready] [--label tag] [--query text] [--limit n] [--all]` |
 | Show actionable work | `tli ready [--query text] [--limit n]` |
 | Show compact repo state | `tli state [--query text] [--limit n]` |
 | Show continuation hints | `tli next [task-id]` (`tli next` resolves done handoffs to unfinished targets; `tli next <task-id>` inspects one task's stored handoff) |
@@ -242,11 +239,10 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | Save a checkpoint | `tli checkpoint <task-id>` |
 | Block work | `tli block <task-id> --reason "..."` |
 | Request review | `tli review <task-id>` |
-| Finish work | `tli done <task-id>` |
+| Finish work | `tli done <task-id> [--clear-schedule]` |
 | Add note | `tli note <task-id> "..."` |
 | View history | `tli log [task-id]` |
 | Add dependency | `tli dep add <task-id> <dependency-id>` |
-| Add subtask | `tli subtask add <parent-id> <child-id>` or `tli sub add <parent-id> <child-id>` |
 
 ## License
 

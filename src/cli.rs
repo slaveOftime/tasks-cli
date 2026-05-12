@@ -57,7 +57,7 @@ pub enum Command {
     Next(NextArgs),
     #[command(
         alias = "get",
-        about = "Inspect one task with blocked_by, children, and continuation detail"
+        about = "Inspect one task with blocked_by and continuation detail"
     )]
     Show(TaskIdArgs),
     #[command(about = "Move a task into active work")]
@@ -69,16 +69,11 @@ pub enum Command {
     #[command(about = "Mark a task as ready for review")]
     Review(StatusNoteArgs),
     #[command(about = "Complete a task or finish one cycle of a scheduled task")]
-    Done(ProgressArgs),
+    Done(DoneArgs),
     #[command(about = "Attach a note to a task without changing its status")]
     Note(NoteArgs),
     #[command(about = "Manage dependency links between tasks that gate ready status")]
     Dep(RelationArgs),
-    #[command(
-        alias = "sub",
-        about = "Manage parent/child task relationships for decomposition"
-    )]
-    Subtask(SubtaskArgs),
     #[command(
         alias = "history",
         about = "Read the event log for one task or the whole store"
@@ -126,7 +121,7 @@ pub struct AddArgs {
 
 #[derive(Debug, Args)]
 pub struct ScheduleArgs {
-    /// Task id or unique prefix to update.
+    /// Task id or case-insensitive partial id to update.
     pub id: String,
     #[arg(
         long,
@@ -164,6 +159,13 @@ pub struct ListArgs {
     pub all: bool,
     #[arg(long, help = "Only show tasks that are ready right now")]
     pub ready: bool,
+    #[arg(
+        long = "label",
+        short = 'l',
+        value_name = "LABEL",
+        help = "Only show tasks that include the given label. Repeat the flag or pass a comma-separated list."
+    )]
+    pub labels: Vec<String>,
     #[arg(
         long,
         help = "Filter by id, title, labels, schedule text, or continuation hints"
@@ -213,13 +215,13 @@ pub struct NextArgs {
 
 #[derive(Debug, Args)]
 pub struct TaskIdArgs {
-    /// Task id or unique prefix to inspect.
+    /// Task id or case-insensitive partial id to inspect.
     pub id: String,
 }
 
 #[derive(Debug, Args)]
 pub struct StatusNoteArgs {
-    /// Task id or unique prefix to update.
+    /// Task id or case-insensitive partial id to update.
     pub id: String,
     #[arg(long, help = "Optional note to append while changing the task status")]
     pub note: Option<String>,
@@ -227,7 +229,7 @@ pub struct StatusNoteArgs {
 
 #[derive(Debug, Args)]
 pub struct ProgressArgs {
-    /// Task id or unique prefix to update.
+    /// Task id or case-insensitive partial id to update.
     pub id: String,
     #[arg(long, help = "Optional note to append while updating progress")]
     pub note: Option<String>,
@@ -237,11 +239,6 @@ pub struct ProgressArgs {
     )]
     pub next_step: Option<String>,
     #[arg(
-        long = "next-subtask",
-        help = "The child task that should be picked up next"
-    )]
-    pub next_subtask: Option<String>,
-    #[arg(
         long = "next-task",
         help = "The follow-up or sibling task to work on next"
     )]
@@ -249,8 +246,31 @@ pub struct ProgressArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct DoneArgs {
+    /// Task id or case-insensitive partial id to update.
+    pub id: String,
+    #[arg(long, help = "Optional note to append while updating progress")]
+    pub note: Option<String>,
+    #[arg(
+        long = "next-step",
+        help = "The next action to take inside this same task"
+    )]
+    pub next_step: Option<String>,
+    #[arg(
+        long = "next-task",
+        help = "The follow-up or sibling task to work on next"
+    )]
+    pub next_task: Option<String>,
+    #[arg(
+        long = "clear-schedule",
+        help = "Remove the recurring schedule instead of re-arming it when completing a scheduled task"
+    )]
+    pub clear_schedule: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct BlockArgs {
-    /// Task id or unique prefix to block.
+    /// Task id or case-insensitive partial id to block.
     pub id: String,
     #[arg(long, help = "Why the task is blocked")]
     pub reason: String,
@@ -258,7 +278,7 @@ pub struct BlockArgs {
 
 #[derive(Debug, Args)]
 pub struct NoteArgs {
-    /// Task id or unique prefix to update.
+    /// Task id or case-insensitive partial id to update.
     pub id: String,
     /// Note text to append.
     pub text: String,
@@ -266,7 +286,7 @@ pub struct NoteArgs {
 
 #[derive(Debug, Args)]
 pub struct LogArgs {
-    /// Optional task id or unique prefix. Omit it to read the whole store event log.
+    /// Optional task id or case-insensitive partial id. Omit it to read the whole store event log.
     pub id: Option<String>,
     #[arg(long, help = "Maximum number of events to show")]
     pub limit: Option<usize>,
@@ -287,29 +307,8 @@ pub enum RelationCommand {
 
 #[derive(Debug, Args)]
 pub struct DependencyArgs {
-    /// Task id or unique prefix that depends on the other task.
+    /// Task id or case-insensitive partial id that depends on the other task.
     pub task: String,
-    /// Task id or unique prefix that must be completed first.
+    /// Task id or case-insensitive partial id that must be completed first.
     pub dependency: String,
-}
-
-#[derive(Debug, Args)]
-pub struct SubtaskArgs {
-    #[command(subcommand)]
-    pub command: SubtaskCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum SubtaskCommand {
-    Add(SubtaskLinkArgs),
-    #[command(alias = "rm")]
-    Remove(SubtaskLinkArgs),
-}
-
-#[derive(Debug, Args)]
-pub struct SubtaskLinkArgs {
-    /// Parent task id or unique prefix.
-    pub parent: String,
-    /// Child task id or unique prefix.
-    pub child: String,
 }
