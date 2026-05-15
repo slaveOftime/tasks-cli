@@ -79,6 +79,8 @@ pub enum Command {
         about = "Read the event log for one task or the whole store"
     )]
     Log(LogArgs),
+    #[command(about = "Start the local web UI and JSON API server")]
+    Server(ServerArgs),
 }
 
 #[derive(Debug, Args)]
@@ -311,4 +313,26 @@ pub struct DependencyArgs {
     pub task: String,
     /// Task id or case-insensitive partial id that must be completed first.
     pub dependency: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ServerArgs {
+    #[command(subcommand)]
+    pub command: ServerCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ServerCommand {
+    #[command(about = "Serve the embedded Kanban UI and task API on localhost")]
+    Start(ServerStartArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ServerStartArgs {
+    #[arg(
+        long,
+        default_value_t = 3030,
+        help = "Loopback port for the local web server"
+    )]
+    pub port: u16,
 }

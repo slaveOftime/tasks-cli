@@ -31,6 +31,7 @@ fn skill_command_is_natural_and_covers_command_surface() {
         "tli note",
         "tli log",
         "tli dep add",
+        "tli server start",
         "--ready-at",
         "local time",
         "--verbose",
@@ -71,6 +72,14 @@ fn help_output_explains_human_and_json_usage() {
         ))
         .stdout(contains("--json"))
         .stdout(contains("Examples:"));
+
+    Command::cargo_bin("tli")
+        .unwrap()
+        .args(["server", "start", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Serve the embedded Kanban UI"))
+        .stdout(contains("--port"));
 
     Command::cargo_bin("tli")
         .unwrap()

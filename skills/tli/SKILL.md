@@ -14,6 +14,7 @@ tli schedule <task-id> --every-minutes 1440 --ready-at "12:20:10"
 tli start <task-id> --note "Picked up after triage"
 tli checkpoint <task-id> --note "Pause here" --next-step "Resume benchmark wiring"
 tli done <task-id> --note "Merged" --next-task follow-up-task-id
+tli server start --port 3030
 ```
 
 ## Output modes
@@ -90,6 +91,7 @@ If a partial match finds more than one task, `tli` fails safely and shows the ma
 | Finish work | `tli done <task-id> [--note text] [--next-step text] [--next-task id] [--clear-schedule]` |
 | Add context | `tli note <task-id> "text"` |
 | View history | `tli log [task-id] [--limit n]` |
+| Start local web UI/API | `tli server start [--port 3030]` |
 | Print this guide | `tli skill` |
 
 ## Dependencies

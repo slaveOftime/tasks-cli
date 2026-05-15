@@ -1,0 +1,14 @@
+{
+  "name": "tli-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pretest": "cargo build --manifest-path ../Cargo.toml",
+    "test": "npm run build && node dist/server.e2e.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
+  }
+}

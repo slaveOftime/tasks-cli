@@ -67,6 +67,7 @@ tli ready
 tli start ship-first-public-release --note "Picking this up now"
 tli checkpoint ship-first-public-release --next-step "Verify npm release assets"
 tli next
+tli server start --port 3030
 ```
 
 ## Core command flow
@@ -101,7 +102,15 @@ tli --json show <task-id>
 
 Most commands that take a task id also accept a case-insensitive partial id match, so you usually do not need to type the full stored id.
 
-### 3. Move work through the lifecycle
+### 3. Use the embedded local web UI
+
+```bash
+tli server start --port 3030
+```
+
+`server start` serves a compact dark Kanban board and JSON API at `http://127.0.0.1:<port>`. It binds to localhost only, uses the same `.tli/` store and core Rust logic as the CLI commands, and embeds all frontend resources in the `tli` binary.
+
+### 4. Move work through the lifecycle
 
 ```bash
 tli start <task-id> --note "Picked up after triage"
@@ -113,7 +122,7 @@ tli note <task-id> "Need benchmark follow-up"
 tli log <task-id> --limit 20
 ```
 
-### 4. Model prerequisites
+### 5. Model prerequisites
 
 ```bash
 tli dep add <task-id> <dependency-id>
@@ -191,6 +200,7 @@ cd tasks-cli
 cargo test
 cargo fmt -- --check
 cargo clippy --all-targets --all-features
+cd e2e && npm install && npm test
 ```
 
 The project is intentionally small and file-based. If you are changing behavior, prefer updating the Rust tests in `src/store/tests.rs` and `tests/cli.rs` alongside the implementation.
@@ -243,6 +253,7 @@ The workflow copies the root `README.md` and `LICENSE` into the npm package duri
 | Add note | `tli note <task-id> "..."` |
 | View history | `tli log [task-id]` |
 | Add dependency | `tli dep add <task-id> <dependency-id>` |
+| Start local web UI/API | `tli server start [--port 3030]` |
 
 ## License
 

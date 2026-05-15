@@ -13,6 +13,8 @@ use crate::output::{
     render_state, render_task_detail, render_task_list,
 };
 use crate::root::{parse_timestamp, resolve_root};
+use crate::server::{ServerOptions, start_server};
+use crate::service::TaskService;
 use crate::store::{AddTaskInput, ListFilter, ProgressUpdate, ScheduleUpdate, TaskStore};
 
 const SKILL_DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/skills/tli/SKILL.md"));
@@ -51,6 +53,11 @@ where
                 }
                 Command::Dep(args) => handle_dependency(&store, args, cli.json, cli.verbose),
                 Command::Log(args) => handle_log(&store, args, cli.json, cli.verbose),
+                Command::Server(args) => match args.command {
+                    crate::cli::ServerCommand::Start(start) => {
+                        start_server(TaskService::new(store), ServerOptions { port: start.port })
+                    }
+                },
                 Command::Skill => unreachable!("handled above"),
             }
         }
