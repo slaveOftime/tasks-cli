@@ -9,7 +9,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use chrono::{DateTime, Local, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{TaskRecord, TaskSchedule, TaskStatus, TaskSummary};
 use crate::service::{
@@ -17,6 +17,8 @@ use crate::service::{
     DoneTaskRequest, EventsQuery, NoteRequest, ProgressRequest, ReadyQuery, ScheduleTaskRequest,
     StateQuery, TaskListQuery, TaskService,
 };
+
+const BOARD_PAGE_SIZE: usize = 15;
 
 const APP_CSS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -31,6 +33,24 @@ const APP_JS: &str = include_str!(concat!(
     "/src/server_assets/app.js"
 ));
 
+struct UiPaths;
+
+impl UiPaths {
+    const APP_CSS: &str = "assets/app.css";
+    const HTMX_JS: &str = "assets/htmx.js";
+    const APP_JS: &str = "assets/app.js";
+    const BOARD: &str = "ui/board";
+    const TASKS: &str = "ui/tasks";
+
+    fn task_action(id: &str, action: &str) -> String {
+        format!("ui/tasks/{id}/{action}")
+    }
+
+    fn dependency_action(id: &str, action: &str) -> String {
+        format!("ui/tasks/{id}/dependencies/{action}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ServerOptions {
     pub(crate) port: u16,
@@ -39,6 +59,126 @@ pub(crate) struct ServerOptions {
 #[derive(Clone)]
 struct AppState {
     service: TaskService,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BoardQuery {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    ready_page: Option<usize>,
+    #[serde(default)]
+    todo_page: Option<usize>,
+    #[serde(default)]
+    active_page: Option<usize>,
+    #[serde(default)]
+    checkpoint_page: Option<usize>,
+    #[serde(default)]
+    blocked_page: Option<usize>,
+    #[serde(default)]
+    review_page: Option<usize>,
+    #[serde(default)]
+    done_page: Option<usize>,
+}
+
+impl BoardQuery {
+    fn search_query(&self) -> Option<&str> {
+        self.query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    fn page_for(&self, class_name: &str) -> usize {
+        let page = match class_name {
+            "ready" => self.ready_page,
+            "todo" => self.todo_page,
+            "active" => self.active_page,
+            "checkpoint" => self.checkpoint_page,
+            "blocked" => self.blocked_page,
+            "review" => self.review_page,
+            "done" => self.done_page,
+            _ => None,
+        };
+        page.unwrap_or(1).max(1)
+    }
+
+    fn query_string_for(&self, class_name: &str, page: usize) -> String {
+        let mut params = Vec::new();
+        if let Some(query) = self.search_query() {
+            push_query_param(&mut params, "query", query);
+        }
+        for (name, value) in [
+            ("ready_page", self.page_override("ready", class_name, page)),
+            ("todo_page", self.page_override("todo", class_name, page)),
+            (
+                "active_page",
+                self.page_override("active", class_name, page),
+            ),
+            (
+                "checkpoint_page",
+                self.page_override("checkpoint", class_name, page),
+            ),
+            (
+                "blocked_page",
+                self.page_override("blocked", class_name, page),
+            ),
+            (
+                "review_page",
+                self.page_override("review", class_name, page),
+            ),
+            ("done_page", self.page_override("done", class_name, page)),
+        ] {
+            if value > 1 {
+                push_query_param(&mut params, name, &value.to_string());
+            }
+        }
+        params.join("&")
+    }
+
+    fn page_override(&self, column: &str, selected: &str, selected_page: usize) -> usize {
+        if column == selected {
+            selected_page.max(1)
+        } else {
+            self.page_for(column)
+        }
+    }
+}
+
+struct ColumnPagination {
+    page: usize,
+    total_pages: usize,
+    total_items: usize,
+    start_index: usize,
+    end_index: usize,
+}
+
+impl ColumnPagination {
+    fn for_total(requested_page: usize, total_items: usize) -> Self {
+        let total_pages = if total_items == 0 {
+            1
+        } else {
+            ((total_items - 1) / BOARD_PAGE_SIZE) + 1
+        };
+        let page = requested_page.max(1).min(total_pages);
+        let start_index = total_items.min((page - 1) * BOARD_PAGE_SIZE);
+        let end_index = total_items.min(start_index + BOARD_PAGE_SIZE);
+        Self {
+            page,
+            total_pages,
+            total_items,
+            start_index,
+            end_index,
+        }
+    }
+
+    fn has_previous(&self) -> bool {
+        self.page > 1
+    }
+
+    fn has_next(&self) -> bool {
+        self.page < self.total_pages
+    }
 }
 
 pub(crate) fn start_server(service: TaskService, options: ServerOptions) -> Result<()> {
@@ -102,21 +242,24 @@ fn app(service: TaskService) -> Router {
 }
 
 async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
-    Html(format!(
+    Html(render_index(&state.service))
+}
+
+fn render_index(service: &TaskService) -> String {
+    format!(
         r##"<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>tli task board</title>
-  <link rel="stylesheet" href="/assets/app.css">
-  <script defer src="/assets/htmx.js"></script>
-  <script defer src="/assets/app.js"></script>
+  <link rel="stylesheet" href="{}">
+  <script defer src="{}"></script>
+  <script defer src="{}"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">repo-local task management</p>
+  <header id="page-top" class="topbar">
+    <div class="topbar__brand">
       <h1>tli Kanban</h1>
     </div>
     <div class="topbar__actions">
@@ -124,13 +267,17 @@ async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
       <button type="button" data-dialog-open="create-task-dialog">Create task</button>
     </div>
   </header>
-  <main id="board" hx-get="/ui/board" hx-trigger="load" hx-swap="outerHTML">
+  <main id="board" hx-get="{}" hx-trigger="load" hx-swap="outerHTML">
     <section class="loading">Loading task board...</section>
   </main>
 </body>
 </html>"##,
-        escape_html(&state.service.root().display().to_string())
-    ))
+        UiPaths::APP_CSS,
+        UiPaths::HTMX_JS,
+        UiPaths::APP_JS,
+        escape_html(&service.root().display().to_string()),
+        UiPaths::BOARD
+    )
 }
 
 async fn asset_css() -> impl IntoResponse {
@@ -286,18 +433,22 @@ async fn api_remove_dependency(
     Ok(Json(state.service.remove_dependency(&id, input)?))
 }
 
-async fn ui_board(State(state): State<Arc<AppState>>) -> UiResult<Html<String>> {
-    render_board(&state.service)
+async fn ui_board(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<BoardQuery>,
+) -> UiResult<Html<String>> {
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
 
 async fn ui_add_task(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<AddTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.add_task(input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -305,10 +456,11 @@ async fn ui_add_task(
 async fn ui_start_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<NoteRequest>,
 ) -> UiResult<Html<String>> {
     state.service.start_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -316,10 +468,11 @@ async fn ui_start_task(
 async fn ui_checkpoint_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<ProgressRequest>,
 ) -> UiResult<Html<String>> {
     state.service.checkpoint_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -327,10 +480,11 @@ async fn ui_checkpoint_task(
 async fn ui_block_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<BlockTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.block_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -338,10 +492,11 @@ async fn ui_block_task(
 async fn ui_review_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<NoteRequest>,
 ) -> UiResult<Html<String>> {
     state.service.review_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -349,10 +504,11 @@ async fn ui_review_task(
 async fn ui_done_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<DoneTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.complete_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -360,10 +516,11 @@ async fn ui_done_task(
 async fn ui_add_note(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<AddNoteRequest>,
 ) -> UiResult<Html<String>> {
     state.service.add_note(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -371,10 +528,11 @@ async fn ui_add_note(
 async fn ui_schedule_task(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<ScheduleTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.schedule_task(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -382,10 +540,11 @@ async fn ui_schedule_task(
 async fn ui_add_dependency(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<DependencyTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.add_dependency(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
@@ -393,32 +552,63 @@ async fn ui_add_dependency(
 async fn ui_remove_dependency(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(query): Query<BoardQuery>,
     Form(input): Form<DependencyTaskRequest>,
 ) -> UiResult<Html<String>> {
     state.service.remove_dependency(&id, input)?;
-    render_board(&state.service)
+    render_board(&state.service, &query)
         .map(Html)
         .map_err(AppError::from)
 }
 
-fn render_board(service: &TaskService) -> Result<String> {
+fn render_board(service: &TaskService, query: &BoardQuery) -> Result<String> {
+    let search_query = query.search_query().map(str::to_string);
     let snapshot = service.state_snapshot(StateQuery {
+        query: search_query.clone(),
         limit: Some(12),
-        ..StateQuery::default()
     })?;
     let tasks = service.list_tasks(TaskListQuery {
         all: Some(true),
-        limit: Some(500),
+        query: search_query.clone(),
         ..TaskListQuery::default()
     })?;
     let ready_ids = service
         .ready_tasks(ReadyQuery {
-            limit: Some(500),
+            query: search_query.clone(),
             ..ReadyQuery::default()
         })?
         .into_iter()
         .map(|task| task.task.id)
         .collect::<std::collections::BTreeSet<_>>();
+    let create_task_path = board_action_path(UiPaths::TASKS, &query.query_string_for("todo", 1));
+    let search_value = query.search_query().unwrap_or("");
+    let search_results_summary = if search_value.is_empty() {
+        None
+    } else if tasks.is_empty() {
+        Some(format!("No tasks match \"{search_value}\"."))
+    } else if tasks.len() == 1 {
+        Some(format!("1 matching task for \"{search_value}\"."))
+    } else {
+        Some(format!(
+            "{} matching tasks for \"{search_value}\".",
+            tasks.len()
+        ))
+    };
+    let search_input_path = board_action_path(UiPaths::BOARD, "");
+    let clear_search_button = if search_value.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r##"<button type="button" class="secondary" hx-get="{}" hx-target="#board" hx-swap="outerHTML">Clear</button>"##,
+            escape_html(UiPaths::BOARD)
+        )
+    };
+    let search_results_summary = search_results_summary.map(|summary| {
+        format!(
+            r#"<p class="board-search__summary">{}</p>"#,
+            escape_html(&summary)
+        )
+    });
 
     let mut html = String::new();
     write!(
@@ -433,7 +623,7 @@ fn render_board(service: &TaskService) -> Result<String> {
       </div>
       <button type="button" class="dialog-close" data-dialog-close aria-label="Close dialog">&times;</button>
     </header>
-    <form hx-post="/ui/tasks" hx-target="#board" hx-swap="outerHTML" class="create-form" data-ready-form>
+    <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="create-form" data-ready-form>
       <input name="title" required placeholder="New task title">
       <input name="id" placeholder="optional-id">
       <input name="labels" placeholder="labels,comma-separated">
@@ -444,21 +634,41 @@ fn render_board(service: &TaskService) -> Result<String> {
     </form>
   </div>
 </dialog>
-<section class="metrics">
-  <span>ready <strong>{}</strong></span>
-  <span>todo <strong>{}</strong></span>
-  <span>active <strong>{}</strong></span>
-  <span>blocked <strong>{}</strong></span>
-  <span>review <strong>{}</strong></span>
-  <span>done <strong>{}</strong></span>
+<section class="panel board-toolbar">
+  <form class="board-search" role="search" hx-get="{}" hx-target="#board" hx-swap="outerHTML">
+    <label class="board-search__field">
+      <input type="search" name="query" value="{}" placeholder="Search titles, ids, labels" aria-label="Search tasks" autocomplete="off" hx-get="{}" hx-trigger="input changed delay:250ms, search" hx-include="closest form" hx-target="#board" hx-swap="outerHTML">
+    </label>
+    <div class="board-search__actions">
+      <button type="submit" class="secondary">Search</button>
+      {}
+    </div>
+    {}
+  </form>
 </section>
+<nav class="metrics" aria-label="Task status summary">"##,
+        escape_html(&create_task_path),
+        escape_html(&search_input_path),
+        escape_html(search_value),
+        escape_html(&search_input_path),
+        clear_search_button,
+        search_results_summary.unwrap_or_default(),
+    )?;
+    for (label, class_name, count) in [
+        ("ready", "ready", snapshot.counts.ready),
+        ("todo", "todo", snapshot.counts.todo),
+        ("active", "active", snapshot.counts.active),
+        ("checkpoint", "checkpoint", snapshot.counts.checkpoint),
+        ("blocked", "blocked", snapshot.counts.blocked),
+        ("review", "review", snapshot.counts.review),
+        ("done", "done", snapshot.counts.done),
+    ] {
+        render_status_summary_item(&mut html, label, class_name, count)?;
+    }
+    write!(
+        html,
+        r##"</nav>
 <section class="kanban">"##,
-        snapshot.counts.ready,
-        snapshot.counts.todo,
-        snapshot.counts.active,
-        snapshot.counts.blocked,
-        snapshot.counts.review,
-        snapshot.counts.done
     )?;
 
     let columns = [
@@ -484,35 +694,52 @@ fn render_board(service: &TaskService) -> Result<String> {
                 }
             })
             .collect::<Vec<_>>();
-        render_column(&mut html, service, title, class_name, &column_tasks)?;
+        render_column(&mut html, service, query, title, class_name, &column_tasks)?;
     }
 
-    html.push_str("</section></main>");
+    html.push_str(
+        r#"</section>
+<button type="button" class="scroll-top" data-scroll-top data-visible="false" aria-label="Scroll to top" title="Scroll to top">
+  <span class="scroll-top__icon" aria-hidden="true">&uarr;</span>
+</button>
+</main>"#,
+    );
     Ok(html)
 }
 
 fn render_column(
     html: &mut String,
     service: &TaskService,
+    query: &BoardQuery,
     title: &str,
     class_name: &str,
     tasks: &[&TaskSummary],
 ) -> Result<()> {
+    let section_id = status_section_id(class_name);
+    let pagination = ColumnPagination::for_total(query.page_for(class_name), tasks.len());
     write!(
         html,
-        r#"<section class="column column-{}"><header><h2>{}</h2><span>{}</span></header>"#,
+        r#"<section id="{}" class="column column-{}"><header><h2>{}</h2><span>{}</span></header><div class="column-cards">"#,
+        escape_html(&section_id),
         class_name,
         escape_html(title),
         tasks.len()
     )?;
-    for task in tasks.iter().take(80) {
-        render_task_card(html, service, task)?;
+    for task in tasks[pagination.start_index..pagination.end_index].iter() {
+        render_task_card(html, service, query, task)?;
     }
+    html.push_str("</div>");
+    render_column_pagination(html, query, class_name, &pagination)?;
     html.push_str("</section>");
     Ok(())
 }
 
-fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary) -> Result<()> {
+fn render_task_card(
+    html: &mut String,
+    service: &TaskService,
+    query: &BoardQuery,
+    task: &TaskSummary,
+) -> Result<()> {
     let detail = service.task_detail(&task.id)?;
     let events = service.task_events(Some(&task.id), Some(3))?;
     let id = escape_html(&task.id);
@@ -521,8 +748,9 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
         html,
         r#"<article class="task-card">
 <div class="task-card__head">
-  <h3>{}</h3>
-  <div class="labels">"#,
+  <div class="task-card__title-row">
+    <h3>{}</h3>
+    <div class="labels">"#,
         title
     )?;
     for label in &task.labels {
@@ -538,7 +766,11 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
             escape_html(&ready_label)
         )?;
     }
-    write!(html, r#"<code>{}</code></div>"#, id)?;
+    write!(
+        html,
+        r#"</div><code class="task-card__id">{}</code></div>"#,
+        id
+    )?;
     if let Some(summary) = detail.task.summary_text.as_deref() {
         write!(html, r#"<p class="summary">{}</p>"#, escape_html(summary))?;
     }
@@ -595,8 +827,8 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
         for event in events {
             write!(
                 html,
-                "<li><span>{}</span> {}</li>",
-                event.kind,
+                r#"<li><span class="event-kind">{}</span><span class="event-message">{}</span></li>"#,
+                escape_html(&event.kind.to_string()),
                 escape_html(&event.message)
             )?;
         }
@@ -605,13 +837,51 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
     let start_disabled = disabled_attr(task.status == TaskStatus::Active);
     let review_disabled = disabled_attr(task.status == TaskStatus::Review);
     let done_disabled = disabled_attr(task.status == TaskStatus::Done);
-    let schedule_section = render_schedule_section(&id, task.schedule.as_ref(), task.ready_at)?;
+    let status_query = query_string_for_status(task.status);
+    let start_path = board_action_path(
+        &UiPaths::task_action(&id, "start"),
+        &query.query_string_for(status_query, 1),
+    );
+    let review_path = board_action_path(
+        &UiPaths::task_action(&id, "review"),
+        &query.query_string_for(status_query, 1),
+    );
+    let done_path = board_action_path(
+        &UiPaths::task_action(&id, "done"),
+        &query.query_string_for("done", query.page_for("done")),
+    );
+    let checkpoint_path = board_action_path(
+        &UiPaths::task_action(&id, "checkpoint"),
+        &query.query_string_for("checkpoint", query.page_for("checkpoint")),
+    );
+    let block_path = board_action_path(
+        &UiPaths::task_action(&id, "block"),
+        &query.query_string_for("blocked", query.page_for("blocked")),
+    );
+    let note_path = board_action_path(
+        &UiPaths::task_action(&id, "note"),
+        &query.query_string_for(status_query, query.page_for(status_query)),
+    );
+    let add_dependency_path = board_action_path(
+        &UiPaths::dependency_action(&id, "add"),
+        &query.query_string_for(status_query, query.page_for(status_query)),
+    );
+    let remove_dependency_path = board_action_path(
+        &UiPaths::dependency_action(&id, "remove"),
+        &query.query_string_for(status_query, query.page_for(status_query)),
+    );
+    let schedule_section = render_schedule_section(
+        &id,
+        task.schedule.as_ref(),
+        task.ready_at,
+        &query.query_string_for(status_query, query.page_for(status_query)),
+    )?;
     write!(
         html,
         r##"<div class="actions">
-  <form hx-post="/ui/tasks/{}/start" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Start</button></form>
-  <form hx-post="/ui/tasks/{}/review" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Review</button></form>
-  <form hx-post="/ui/tasks/{}/done" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Done</button></form>
+  <form hx-post="{}" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Start</button></form>
+  <form hx-post="{}" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Review</button></form>
+  <form hx-post="{}" hx-target="#board" hx-swap="outerHTML"><button type="submit"{}>Done</button></form>
   <button type="button" class="secondary" data-dialog-open="manage-{}">Manage</button>
 </div>
 <dialog id="manage-{}" class="app-dialog">
@@ -626,7 +896,7 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
     <div class="dialog-grid">
       <section class="dialog-section">
         <h3>Checkpoint</h3>
-        <form hx-post="/ui/tasks/{}/checkpoint" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form data-ready-any>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form data-ready-any>
           <input name="note" placeholder="checkpoint note">
           <input name="next_step" placeholder="next step">
           <input name="next_task" placeholder="next task id">
@@ -635,14 +905,14 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
       </section>
       <section class="dialog-section">
         <h3>Block</h3>
-        <form hx-post="/ui/tasks/{}/block" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
           <input name="reason" required placeholder="blocked reason">
           <button type="submit" data-ready-submit hidden>Block</button>
         </form>
       </section>
       <section class="dialog-section">
         <h3>Note</h3>
-        <form hx-post="/ui/tasks/{}/note" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
           <input name="text" required placeholder="note">
           <button type="submit" data-ready-submit hidden>Add note</button>
         </form>
@@ -650,11 +920,11 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
       {}
       <section class="dialog-section">
         <h3>Dependencies</h3>
-        <form hx-post="/ui/tasks/{}/dependencies/add" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
           <input name="dependency" required placeholder="dependency id">
           <button type="submit" data-ready-submit hidden>Add dep</button>
         </form>
-        <form hx-post="/ui/tasks/{}/dependencies/remove" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
           <input name="dependency" required placeholder="dependency id">
           <button type="submit" data-ready-submit hidden>Remove dep</button>
         </form>
@@ -663,23 +933,83 @@ fn render_task_card(html: &mut String, service: &TaskService, task: &TaskSummary
   </div>
 </dialog>
 </article>"##,
-        id,
+        escape_html(&start_path),
         start_disabled,
-        id,
+        escape_html(&review_path),
         review_disabled,
-        id,
+        escape_html(&done_path),
         done_disabled,
         id,
         id,
         title,
-        id,
-        id,
-        id,
+        escape_html(&checkpoint_path),
+        escape_html(&block_path),
+        escape_html(&note_path),
         schedule_section,
-        id,
-        id
+        escape_html(&add_dependency_path),
+        escape_html(&remove_dependency_path)
     )?;
     Ok(())
+}
+
+fn render_column_pagination(
+    html: &mut String,
+    query: &BoardQuery,
+    class_name: &str,
+    pagination: &ColumnPagination,
+) -> Result<()> {
+    let range_label = if pagination.total_items == 0 {
+        "0 tasks".to_string()
+    } else {
+        format!(
+            "{}-{} of {}",
+            pagination.start_index + 1,
+            pagination.end_index,
+            pagination.total_items
+        )
+    };
+    let previous_path = board_action_path(
+        UiPaths::BOARD,
+        &query.query_string_for(class_name, pagination.page.saturating_sub(1).max(1)),
+    );
+    let next_path = board_action_path(
+        UiPaths::BOARD,
+        &query.query_string_for(class_name, pagination.page + 1),
+    );
+    write!(
+        html,
+        r##"<footer class="column-pagination"><span>Page {} of {} · {}</span><div class="column-pagination__actions"><button type="button" class="secondary" hx-get="{}" hx-target="#board" hx-swap="outerHTML"{}>Prev</button><button type="button" class="secondary" hx-get="{}" hx-target="#board" hx-swap="outerHTML"{}>Next</button></div></footer>"##,
+        pagination.page,
+        pagination.total_pages,
+        escape_html(&range_label),
+        escape_html(&previous_path),
+        disabled_attr(!pagination.has_previous()),
+        escape_html(&next_path),
+        disabled_attr(!pagination.has_next())
+    )?;
+    Ok(())
+}
+
+fn render_status_summary_item(
+    html: &mut String,
+    label: &str,
+    class_name: &str,
+    count: usize,
+) -> Result<()> {
+    let section_id = status_section_id(class_name);
+    write!(
+        html,
+        r##"<a class="metrics__link" href="#{}" aria-label="Jump to {} tasks"><span>{} <strong>{}</strong></span></a>"##,
+        escape_html(&section_id),
+        escape_html(label),
+        escape_html(label),
+        count
+    )?;
+    Ok(())
+}
+
+fn status_section_id(class_name: &str) -> String {
+    format!("status-{class_name}")
 }
 
 fn escape_html(value: &str) -> String {
@@ -702,6 +1032,7 @@ fn render_schedule_section(
     id: &str,
     schedule: Option<&TaskSchedule>,
     ready_at: Option<DateTime<Utc>>,
+    query_string: &str,
 ) -> Result<String> {
     let mut html = String::new();
     let (interval_checked, cron_checked, interval_hidden, cron_hidden, interval_value, cron_value) =
@@ -739,11 +1070,16 @@ fn render_schedule_section(
         html,
         r##"<section class="dialog-section">
         <h3>Schedule</h3>
-        <form hx-post="/ui/tasks/{}/schedule" hx-target="#board" hx-swap="outerHTML" class="stack schedule-form" data-schedule-form>
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack schedule-form" data-schedule-form>
           <div class="toggle-group" role="radiogroup" aria-label="Schedule mode">
             <label><input type="radio" name="schedule_mode" value="interval"{}> Interval</label>
             <label><input type="radio" name="schedule_mode" value="cron"{}> Cron</label>"##,
-        id, interval_checked, cron_checked
+        escape_html(&board_action_path(
+            &UiPaths::task_action(id, "schedule"),
+            query_string
+        )),
+        interval_checked,
+        cron_checked
     )?;
     if schedule.is_some() {
         html.push_str(
@@ -799,6 +1135,48 @@ fn disabled_attr(disabled: bool) -> &'static str {
     }
 }
 
+fn board_action_path(path: &str, query_string: &str) -> String {
+    if query_string.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query_string}")
+    }
+}
+
+fn push_query_param(params: &mut Vec<String>, name: &str, value: &str) {
+    params.push(format!(
+        "{}={}",
+        encode_query_component(name),
+        encode_query_component(value)
+    ));
+}
+
+fn encode_query_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(char::from(byte));
+            }
+            _ => {
+                write!(encoded, "%{byte:02X}").expect("writing to string cannot fail");
+            }
+        }
+    }
+    encoded
+}
+
+fn query_string_for_status(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Todo => "todo",
+        TaskStatus::Active => "active",
+        TaskStatus::Checkpoint => "checkpoint",
+        TaskStatus::Blocked => "blocked",
+        TaskStatus::Review => "review",
+        TaskStatus::Done => "done",
+    }
+}
+
 type ApiResult<T> = std::result::Result<T, AppError>;
 type UiResult<T> = std::result::Result<T, AppError>;
 
@@ -827,5 +1205,186 @@ impl IntoResponse for AppError {
             message,
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::{BoardQuery, UiPaths, render_board, render_index};
+    use crate::service::{AddTaskRequest, TaskService};
+    use crate::store::TaskStore;
+
+    #[test]
+    fn index_uses_relative_asset_and_board_paths() {
+        let temp = TempDir::new().unwrap();
+        let service = TaskService::new(TaskStore::new(temp.path().join(".tli")));
+        let html = render_index(&service);
+
+        assert!(html.contains(r#"href="assets/app.css""#));
+        assert!(html.contains(r#"src="assets/htmx.js""#));
+        assert!(html.contains(r#"src="assets/app.js""#));
+        assert!(html.contains(r#"hx-get="ui/board""#));
+        assert!(!html.contains(r#"href="/assets/app.css""#));
+        assert!(!html.contains(r#"src="/assets/htmx.js""#));
+        assert!(!html.contains(r#"src="/assets/app.js""#));
+        assert!(!html.contains(r#"hx-get="/ui/board""#));
+    }
+
+    #[test]
+    fn board_uses_relative_ui_action_paths() {
+        let temp = TempDir::new().unwrap();
+        let store_root = temp.path().join(".tli");
+        fs::create_dir_all(&store_root).unwrap();
+        let service = TaskService::new(TaskStore::new(store_root));
+        service
+            .add_task(AddTaskRequest {
+                title: "Ship proxy-safe board".into(),
+                id: Some("proxy-safe-board".into()),
+                ..AddTaskRequest::default()
+            })
+            .unwrap();
+
+        let html = render_board(&service, &BoardQuery::default()).unwrap();
+
+        for expected in [
+            format!(r#"hx-post="{}""#, UiPaths::TASKS),
+            format!(
+                r#"hx-post="{}""#,
+                UiPaths::task_action("proxy-safe-board", "start")
+            ),
+            format!(
+                r#"hx-post="{}""#,
+                UiPaths::task_action("proxy-safe-board", "checkpoint")
+            ),
+            format!(
+                r#"hx-post="{}""#,
+                UiPaths::task_action("proxy-safe-board", "schedule")
+            ),
+            format!(
+                r#"hx-post="{}""#,
+                UiPaths::dependency_action("proxy-safe-board", "add")
+            ),
+            format!(
+                r#"hx-post="{}""#,
+                UiPaths::dependency_action("proxy-safe-board", "remove")
+            ),
+        ] {
+            assert!(html.contains(&expected), "missing {expected}");
+        }
+
+        for unexpected in [
+            r#"hx-post="/ui/tasks""#,
+            r#"hx-post="/ui/tasks/proxy-safe-board/start""#,
+            r#"hx-post="/ui/tasks/proxy-safe-board/checkpoint""#,
+            r#"hx-post="/ui/tasks/proxy-safe-board/schedule""#,
+            r#"hx-post="/ui/tasks/proxy-safe-board/dependencies/add""#,
+            r#"hx-post="/ui/tasks/proxy-safe-board/dependencies/remove""#,
+        ] {
+            assert!(!html.contains(unexpected), "unexpected {unexpected}");
+        }
+    }
+
+    #[test]
+    fn board_renders_independent_column_pagination_and_preserves_relative_paths() {
+        let temp = TempDir::new().unwrap();
+        let store_root = temp.path().join(".tli");
+        fs::create_dir_all(&store_root).unwrap();
+        let service = TaskService::new(TaskStore::new(store_root));
+
+        for index in 1..=17 {
+            service
+                .add_task(AddTaskRequest {
+                    title: format!("Todo task {index}"),
+                    id: Some(format!("todo-task-{index:02}")),
+                    ready_at: Some("2099-01-01T00:00:00Z".into()),
+                    ..AddTaskRequest::default()
+                })
+                .unwrap();
+        }
+        for index in 1..=16 {
+            let id = format!("done-task-{index:02}");
+            service
+                .add_task(AddTaskRequest {
+                    title: format!("Done task {index}"),
+                    id: Some(id.clone()),
+                    ..AddTaskRequest::default()
+                })
+                .unwrap();
+            service.start_task(&id, Default::default()).unwrap();
+            service.complete_task(&id, Default::default()).unwrap();
+        }
+
+        let html = render_board(
+            &service,
+            &BoardQuery {
+                todo_page: Some(2),
+                done_page: Some(2),
+                ..BoardQuery::default()
+            },
+        )
+        .unwrap();
+
+        assert!(html.contains(r#"column-pagination"#));
+        assert!(html.contains(r#"aria-label="Task status summary""#));
+        assert!(html.contains(r##"href="#status-ready""##));
+        assert!(html.contains(r##"href="#status-checkpoint""##));
+        assert!(html.contains(r#"id="status-ready" class="column column-ready""#));
+        assert!(html.contains(r#"data-scroll-top"#));
+        assert!(html.contains(r#"hx-get="ui/board?done_page=2""#));
+        assert!(html.contains(r#"hx-get="ui/board?todo_page=2""#));
+        assert!(html.contains(r#"<code class="task-card__id">todo-task-01</code>"#));
+        assert!(!html.contains(r#"<code class="task-card__id">todo-task-17</code>"#));
+        assert!(html.contains(r#"<code class="task-card__id">done-task-01</code>"#));
+        assert!(!html.contains(r#"<code class="task-card__id">done-task-16</code>"#));
+        assert!(html.contains(r#"ui/tasks/done-task-01/done?todo_page=2&amp;done_page=2"#));
+        assert!(!html.contains(r#"hx-get="/ui/board?todo_page=1&done_page=2""#));
+    }
+
+    #[test]
+    fn board_search_filters_tasks_and_preserves_query_in_actions() {
+        let temp = TempDir::new().unwrap();
+        let store_root = temp.path().join(".tli");
+        fs::create_dir_all(&store_root).unwrap();
+        let service = TaskService::new(TaskStore::new(store_root));
+        service
+            .add_task(AddTaskRequest {
+                title: "Alpha release polish".into(),
+                id: Some("alpha-release".into()),
+                labels: Some("launch".into()),
+                ..AddTaskRequest::default()
+            })
+            .unwrap();
+        service
+            .add_task(AddTaskRequest {
+                title: "Beta cleanup".into(),
+                id: Some("beta-cleanup".into()),
+                ..AddTaskRequest::default()
+            })
+            .unwrap();
+
+        let html = render_board(
+            &service,
+            &BoardQuery {
+                query: Some("alpha release".into()),
+                ..BoardQuery::default()
+            },
+        )
+        .unwrap();
+
+        assert!(html.contains(r#"role="search""#));
+        assert!(html.contains(r#"name="query" value="alpha release""#));
+        assert!(html.contains(
+            r#"class="board-search__summary">1 matching task for &quot;alpha release&quot;."#
+        ));
+        assert!(html.contains(r#"<code class="task-card__id">alpha-release</code>"#));
+        assert!(!html.contains(r#"<code class="task-card__id">beta-cleanup</code>"#));
+        assert!(html.contains(r#"hx-post="ui/tasks?query=alpha%20release""#));
+        assert!(html.contains(r#"ui/tasks/alpha-release/start?query=alpha%20release"#));
+        assert!(html.contains(r#"hx-get="ui/board?query=alpha%20release""#));
+        assert!(!html.contains("Filter tasks across every column."));
     }
 }

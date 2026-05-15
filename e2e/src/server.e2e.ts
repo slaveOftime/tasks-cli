@@ -67,6 +67,12 @@ async function main(): Promise<void> {
       '--cron',
       '0 22 * * *',
     ]);
+    for (let index = 1; index <= 16; index += 1) {
+      const id = `done-overflow-${String(index).padStart(2, '0')}`;
+      await run(binary, ['--root', storeRoot, 'add', `Done overflow ${index}`, '--id', id]);
+      await run(binary, ['--root', storeRoot, 'start', id]);
+      await run(binary, ['--root', storeRoot, 'done', id, '--note', `C:\\repo\\very\\long\\path\\${'segment\\'.repeat(8)}file-${index}.ts`]);
+    }
 
     const started = await startServer(storeRoot);
     server = started.server;
@@ -74,9 +80,10 @@ async function main(): Promise<void> {
 
     const index = await text(`${baseUrl}/`);
     assert.match(index, /tli Kanban/);
-    assert.match(index, /\/assets\/app\.css/);
-    assert.match(index, /\/assets\/htmx\.js/);
+    assert.match(index, /href="assets\/app\.css"/);
+    assert.match(index, /src="assets\/htmx\.js"/);
     assert.match(index, /data-dialog-open="create-task-dialog"/);
+    assert.doesNotMatch(index, /repo-local task management/);
     assert.doesNotMatch(index, /workspace board/i);
 
     const appJs = await text(`${baseUrl}/assets/app.js`);
@@ -85,10 +92,21 @@ async function main(): Promise<void> {
     assert.match(appJs, /data-ready-submit/);
     assert.match(appJs, /data-schedule-form/);
     assert.match(appJs, /data-schedule-ready-at/);
+    assert.match(appJs, /data-scroll-top/);
+    assert.match(appJs, /window\.scrollTo\(\{ top: 0, behavior: 'smooth' }/);
 
     const htmx = await text(`${baseUrl}/assets/htmx.js`);
     assert.match(htmx, /new URLSearchParams\(\)/);
     assert.match(htmx, /tli:content-updated/);
+    assert.match(htmx, /form\[hx-post], form\[hx-get]/);
+    assert.match(htmx, /if \(isFormControl\(el\) && el\.tagName !== 'BUTTON'\) return;/);
+    assert.match(htmx, /document\.addEventListener\('input'/);
+    assert.match(htmx, /document\.addEventListener\('search'/);
+    assert.match(htmx, /var pendingRequests = new Map\(\)/);
+    assert.match(htmx, /prior && prior\.controller\) prior\.controller\.abort\(\)/);
+    assert.match(htmx, /!current \|\| current\.token !== token/);
+    assert.match(htmx, /var nextTarget = document\.querySelector\(selector\)/);
+    assert.match(htmx, /if \(error && error\.name === 'AbortError'\) return;/);
     assert.doesNotMatch(htmx, /request\('POST'[^;]+new FormData/s);
 
     const css = await text(`${baseUrl}/assets/app.css`);
@@ -97,6 +115,17 @@ async function main(): Promise<void> {
     assert.match(css, /\.dialog-card\s*{[\s\S]*overflow-x:\s*hidden/s);
     assert.match(css, /\.dialog-close\s*{[\s\S]*position:\s*absolute;[\s\S]*right:\s*8px/s);
     assert.match(css, /\.schedule-panel\[hidden\]\s*{[\s\S]*display:\s*none/s);
+    assert.match(css, /\.task-card__head\s*{[\s\S]*flex-direction:\s*column/s);
+    assert.match(css, /\.task-card__id\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
+    assert.match(css, /\.events li\s*{[\s\S]*grid-template-columns:\s*auto minmax\(0,\s*1fr\)/s);
+    assert.match(css, /\.event-message\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
+    assert.match(css, /\.column-pagination\s*{[\s\S]*justify-content:\s*space-between/s);
+    assert.match(css, /\.metrics__link\s*{[\s\S]*text-decoration:\s*none/s);
+    assert.match(css, /\.scroll-top\s*{[\s\S]*position:\s*fixed;[\s\S]*border-radius:\s*999px/s);
+    assert.match(css, /\.scroll-top\[data-visible="true"\]\s*{[\s\S]*pointer-events:\s*auto/s);
+    assert.match(css, /\.board-search\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
+    assert.match(css, /\.board-search__actions\s*{[\s\S]*display:\s*inline-flex[\s\S]*flex-wrap:\s*nowrap/s);
+    assert.match(css, /\.board-search__summary\s*{[\s\S]*grid-column:\s*1 \/ -1/s);
     assert.equal(css, await readFile(cssPath, 'utf8'));
 
     const board = await text(`${baseUrl}/ui/board`);
@@ -140,9 +169,30 @@ async function main(): Promise<void> {
     assert.match(board, /class="task-card__head"[\s\S]*<h3>Seed task<\/h3>[\s\S]*class="labels"/);
     assert.match(board, /<time class="task-time" datetime="2026-05-12T01:55:46\+00:00">[^<]+<\/time>/);
     assert.doesNotMatch(board, />2026-05-12T01:55:46\+00:00<\/time>/);
+    assert.match(board, /<code class="task-card__id">seed-task<\/code>/);
+    assert.match(board, /<nav class="metrics" aria-label="Task status summary">/);
+    assert.match(board, /href="#status-ready" aria-label="Jump to ready tasks"/);
+    assert.match(board, /href="#status-checkpoint" aria-label="Jump to checkpoint tasks"/);
+    assert.match(board, /<section id="status-ready" class="column column-ready">/);
+    assert.match(board, /<section id="status-done" class="column column-done">/);
+    assert.match(board, /data-scroll-top data-visible="false" aria-label="Scroll to top"/);
+    assert.match(board, /class="scroll-top__icon" aria-hidden="true">&uarr;<\/span>/);
+    assert.match(board, /class="board-search__actions"/);
+    assert.match(board, /type="search" name="query" value="" placeholder="Search titles, ids, labels" aria-label="Search tasks"/);
+    assert.doesNotMatch(board, /<span class="eyebrow">Search<\/span>/);
+    assert.doesNotMatch(board, /Filter tasks across every column\./);
+    assert.match(board, /<li><span class="event-kind">completed<\/span><span class="event-message">/);
+    assert.match(board, /column-pagination/);
+    assert.match(board, /hx-get="ui\/board\?done_page=2"/);
+    assert.match(board, /Page 1 of 2 · 1-15 of 16/);
     assert.doesNotMatch(board, /class="status"/);
     assert.doesNotMatch(board, /<details>/);
     assert.doesNotMatch(board, /workspace board/i);
+
+    const donePageTwo = await text(`${baseUrl}/ui/board?done_page=2`);
+    assert.match(donePageTwo, /Page 2 of 2 · 16-16 of 16/);
+    assert.match(donePageTwo, /done-overflow-01/);
+    assert.doesNotMatch(donePageTwo, /done-overflow-16/);
 
     const created = await postJson<TaskRecord>(`${baseUrl}/api/tasks`, {
       title: 'Created from JSON-compatible form',
@@ -183,6 +233,10 @@ async function main(): Promise<void> {
     const state = await json<StateResponse>(`${baseUrl}/api/state`);
     assert.ok(state.counts.ready >= 1);
     assert.ok(state.counts.active >= 1);
+
+    const searchResults = await text(`${baseUrl}/ui/board?query=seed`);
+    assert.match(searchResults, /class="board-search__summary">1 matching task for &quot;seed&quot;\./);
+    assert.doesNotMatch(searchResults, /Filter tasks across every column\./);
 
     const events = await json<Array<{ message: string }>>(`${baseUrl}/api/events`);
     assert.ok(events.some((event) => event.message.includes('task created')));

@@ -63,7 +63,19 @@ function initializeForms(root) {
   root.querySelectorAll('[data-schedule-form]').forEach(updateScheduleForm);
 }
 
+function syncScrollTopButton() {
+  var button = document.querySelector('[data-scroll-top]');
+  if (!button) return;
+  button.setAttribute('data-visible', window.scrollY > 280 ? 'true' : 'false');
+}
+
 document.addEventListener('click', function (event) {
+  var scrollTop = event.target.closest('[data-scroll-top]');
+  if (scrollTop) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
   var opener = event.target.closest('[data-dialog-open]');
   if (opener) {
     var dialog = document.getElementById(opener.getAttribute('data-dialog-open'));
@@ -103,8 +115,12 @@ document.addEventListener('change', function (event) {
 
 document.addEventListener('DOMContentLoaded', function () {
   initializeForms(document);
+  syncScrollTopButton();
 });
 
 document.addEventListener('tli:content-updated', function () {
   initializeForms(document);
+  syncScrollTopButton();
 });
+
+window.addEventListener('scroll', syncScrollTopButton, { passive: true });
