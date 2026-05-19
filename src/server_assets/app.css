@@ -323,18 +323,14 @@ button.secondary {
 }
 
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
+  display: none;
 }
 
 .metrics__link {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 42px;
-  padding: 8px 12px 8px 14px;
+  padding: 4px 8px 4px 8px;
   color: hsl(var(--muted-foreground));
   text-decoration: none;
   text-transform: uppercase;
@@ -365,7 +361,7 @@ button.secondary {
 }
 
 .board-toolbar {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .board-search {
@@ -373,7 +369,7 @@ button.secondary {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  width: min(100%, 1040px);
+  max-width: 400px;
 }
 
 .board-search__field {
@@ -597,7 +593,7 @@ button.secondary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
   min-width: 0;
 }
 
@@ -611,7 +607,6 @@ button.secondary {
 }
 
 .task-time {
-  align-self: stretch;
   min-width: 0;
   color: hsl(var(--muted-foreground));
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
@@ -644,7 +639,7 @@ code {
 }
 
 .meta {
-  margin: 6px 0 0;
+  margin: 12px 0 0;
   color: hsl(var(--muted-foreground));
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -653,10 +648,11 @@ code {
 
 .detail-row,
 .events li {
-  display: grid;
-  grid-template-columns: var(--task-detail-label-width) minmax(0, 1fr);
-  gap: 8px;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
   align-items: start;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -667,6 +663,7 @@ code {
   text-transform: uppercase;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-weight: 500;
 }
 
 .detail-row__label--warning {
@@ -693,7 +690,7 @@ code {
 }
 
 .events {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
   color: hsl(var(--muted-foreground));
@@ -701,11 +698,11 @@ code {
 }
 
 .events li {
-  gap: 8px;
+  gap: 2px;
 }
 
 .events li + li {
-  margin-top: 6px;
+  margin-top: 12px;
 }
 
 .event-kind {
@@ -715,6 +712,7 @@ code {
   text-transform: uppercase;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-weight: 500;
 }
 
 .event-message {
@@ -904,6 +902,8 @@ code {
   }
 
   .metrics {
+    gap: 8px;
+    margin-bottom: 12px;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -953,7 +953,7 @@ code {
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1680px) {
   .kanban {
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }

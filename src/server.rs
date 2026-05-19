@@ -812,7 +812,7 @@ fn render_task_card(
         for event in events {
             write!(
                 html,
-                r#"<li><span class="event-kind">{}</span><span class="event-message">{}</span></li>"#,
+                r#"<li><div class="event-kind">{}</div><div class="event-message">{}</div></li>"#,
                 escape_html(&event.kind.to_string()),
                 escape_html(&event.message)
             )?;

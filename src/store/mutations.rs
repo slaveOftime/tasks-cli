@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Local, Utc};
+use clap::builder::Str;
 
 use crate::model::{
     StoreIndex, TaskContinuation, TaskEvent, TaskEventKind, TaskNote, TaskRecord, TaskStatus,
@@ -77,7 +78,7 @@ impl TaskStore {
                     text: note,
                 });
             }
-            Ok("task started".to_string())
+            Ok(String::new())
         })
     }
 
@@ -99,10 +100,7 @@ impl TaskStore {
                     text: note,
                 });
             }
-            Ok(describe_progress_message(
-                "checkpoint saved",
-                &task.summary.continuation,
-            ))
+            Ok(describe_progress_message(&task.summary.continuation))
         })
     }
 
@@ -120,7 +118,7 @@ impl TaskStore {
                 at: now,
                 text: format!("Blocked: {reason}"),
             });
-            Ok(format!("task blocked: {reason}"))
+            Ok(reason)
         })
     }
 
@@ -140,9 +138,9 @@ impl TaskStore {
                     at: now,
                     text: note.clone(),
                 });
-                Ok(format!("review requested: {note}"))
+                Ok(note)
             } else {
-                Ok("review requested".to_string())
+                Ok("".to_string())
             }
         })
     }
@@ -166,7 +164,7 @@ impl TaskStore {
             task.summary.schedule = Some(schedule.clone());
             task.summary.ready_at = resolve_ready_at(update.ready_at, Some(&schedule), now)?;
             Ok(format!(
-                "schedule updated: {} next={}",
+                "updated at: {} next={}",
                 schedule,
                 task.summary
                     .ready_at
@@ -197,10 +195,7 @@ impl TaskStore {
                 task.summary.schedule = None;
                 task.summary.ready_at = None;
                 task.summary.status = TaskStatus::Done;
-                return Ok(describe_progress_message(
-                    "task completed; schedule cleared",
-                    &task.summary.continuation,
-                ));
+                return Ok(describe_progress_message(&task.summary.continuation));
             }
 
             if let Some(schedule) = task.summary.schedule.as_ref() {
@@ -209,16 +204,13 @@ impl TaskStore {
                 task.summary.ready_at = Some(next_ready_at);
                 return Ok(format!(
                     "{}; next ready at {}",
-                    describe_progress_message("cycle completed", &task.summary.continuation),
+                    describe_progress_message(&task.summary.continuation),
                     next_ready_at.to_rfc3339()
                 ));
             }
 
             task.summary.status = TaskStatus::Done;
-            Ok(describe_progress_message(
-                "task completed",
-                &task.summary.continuation,
-            ))
+            Ok(describe_progress_message(&task.summary.continuation))
         })
     }
 
@@ -231,7 +223,7 @@ impl TaskStore {
                 at: now,
                 text: text.clone(),
             });
-            Ok(format!("note added: {text}"))
+            Ok(text)
         })
     }
 

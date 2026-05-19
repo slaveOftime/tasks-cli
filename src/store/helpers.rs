@@ -204,9 +204,9 @@ pub(super) fn unmet_dependency_ids(task: &TaskSummary, index: &StoreIndex) -> Ve
         .collect()
 }
 
-pub(super) fn describe_progress_message(prefix: &str, continuation: &TaskContinuation) -> String {
+pub(super) fn describe_progress_message(continuation: &TaskContinuation) -> String {
     if continuation.is_empty() {
-        return prefix.to_string();
+        return String::new();
     }
 
     let mut parts = Vec::new();
@@ -216,7 +216,7 @@ pub(super) fn describe_progress_message(prefix: &str, continuation: &TaskContinu
     if let Some(task) = continuation.next_task.as_deref() {
         parts.push(format!("task={task}"));
     }
-    format!("{prefix} ({})", parts.join(", "))
+    format!("{}", parts.join(", "))
 }
 
 pub(super) fn ensure_task_exists(index: &StoreIndex, task_id: &str) -> Result<()> {
