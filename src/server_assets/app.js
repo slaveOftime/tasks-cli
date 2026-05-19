@@ -60,16 +60,42 @@ function initializeForms(root) {
   root.querySelectorAll('[data-schedule-form]').forEach(updateScheduleForm);
 }
 
+var scrollContainer = null;
+
+function currentScrollOffset() {
+  return scrollContainer ? scrollContainer.scrollTop : window.scrollY;
+}
+
 function syncScrollTopButton() {
   var button = document.querySelector('[data-scroll-top]');
   if (!button) return;
-  button.setAttribute('data-visible', window.scrollY > 280 ? 'true' : 'false');
+  button.setAttribute('data-visible', currentScrollOffset() > 200 ? 'true' : 'false');
+}
+
+function bindScrollContainer() {
+  var next = document.querySelector('#board');
+  if (scrollContainer === next) {
+    syncScrollTopButton();
+    return;
+  }
+  if (scrollContainer) {
+    scrollContainer.removeEventListener('scroll', syncScrollTopButton);
+  }
+  scrollContainer = next;
+  if (scrollContainer) {
+    scrollContainer.addEventListener('scroll', syncScrollTopButton, { passive: true });
+  }
+  syncScrollTopButton();
 }
 
 document.addEventListener('click', function (event) {
   var scrollTop = event.target.closest('[data-scroll-top]');
   if (scrollTop) {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     return;
   }
 
@@ -112,12 +138,12 @@ document.addEventListener('change', function (event) {
 
 document.addEventListener('DOMContentLoaded', function () {
   initializeForms(document);
-  syncScrollTopButton();
+  bindScrollContainer();
 });
 
 document.addEventListener('tli:content-updated', function () {
   initializeForms(document);
-  syncScrollTopButton();
+  bindScrollContainer();
 });
 
 window.addEventListener('scroll', syncScrollTopButton, { passive: true });

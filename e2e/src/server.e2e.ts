@@ -85,6 +85,8 @@ async function main(): Promise<void> {
     assert.match(index, /href="assets\/app\.css"/);
     assert.match(index, /src="assets\/htmx\.js"/);
     assert.match(index, /data-dialog-open="create-task-dialog"/);
+    assert.match(index, /<form class="topbar-search board-search" role="search" hx-get="ui\/board" hx-target="#board" hx-swap="outerHTML">/);
+    assert.match(index, /<input type="search" name="query" value="" placeholder="Search titles, ids, labels" aria-label="Search tasks" autocomplete="off">/);
     assert.doesNotMatch(index, /repo-local task management/);
     assert.doesNotMatch(index, /workspace board/i);
 
@@ -94,7 +96,11 @@ async function main(): Promise<void> {
     assert.match(appJs, /data-ready-submit/);
     assert.match(appJs, /data-schedule-form/);
     assert.match(appJs, /data-scroll-top/);
+    assert.match(appJs, /document\.querySelector\('\.kanban'\)/);
+    assert.match(appJs, /scrollContainer\.addEventListener\('scroll', syncScrollTopButton, \{ passive: true \}\)/);
+    assert.match(appJs, /scrollContainer\.scrollTo\(\{ top: 0, left: 0, behavior: 'smooth' \}\)/);
     assert.match(appJs, /window\.scrollTo\(\{ top: 0, behavior: 'smooth' }/);
+    assert.doesNotMatch(appJs, /document\.getElementById\('board'\)\.addEventListener\('scroll'/);
 
     const htmx = await text(`${baseUrl}/assets/htmx.js`);
     assert.match(htmx, /new URLSearchParams\(\)/);
@@ -140,11 +146,14 @@ async function main(): Promise<void> {
     assert.match(css, /\.scroll-top\s*{[\s\S]*position:\s*fixed;[\s\S]*border-radius:\s*999px/s);
     assert.match(css, /\.scroll-top\[data-visible="true"\]\s*{[\s\S]*pointer-events:\s*auto/s);
     assert.match(css, /\.board-search\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
+    assert.match(css, /\.topbar-search\s*{[\s\S]*flex:\s*1 1 500px[\s\S]*max-width:\s*560px/s);
+    assert.match(css, /@media \(max-width: 920px\)[\s\S]*\.topbar-search\s*{[\s\S]*display:\s*none/s);
+    assert.match(css, /@media \(min-width: 921px\)[\s\S]*\.board-toolbar\s*{[\s\S]*display:\s*none/s);
     assert.match(css, /\.board-toolbar\s*{[\s\S]*margin-bottom:\s*12px/s);
-    assert.doesNotMatch(css, /@media \(max-width: 920px\)[\s\S]*\.board-toolbar\s*{[\s\S]*padding:/s);
+    assert.doesNotMatch(css, /@media \(max-width: 920px\)\s*{[^@]*\.board-toolbar\s*{[^}]*padding:/s);
     assert.match(css, /\.board-search__actions\s*{[\s\S]*display:\s*inline-flex[\s\S]*flex-wrap:\s*nowrap/s);
-    assert.match(css, /\.board-search__field input\s*{[\s\S]*min-height:\s*38px[\s\S]*font-size:\s*16px/s);
-    assert.match(css, /\.board-search__actions button\s*{[\s\S]*min-height:\s*38px/s);
+    assert.match(css, /\.board-search__field input\s*{[\s\S]*(?:min-)?height:\s*32px[\s\S]*font-size:\s*16px/s);
+    assert.match(css, /\.board-search__actions button\s*{[\s\S]*(?:min-)?height:\s*32px/s);
     assert.match(css, /\.board-search__summary\s*{[\s\S]*grid-column:\s*1 \/ -1/s);
     assert.match(css, /\.task-card\s*{[\s\S]*--task-detail-label-width:\s*clamp\(9ch,\s*28%,\s*16ch\)/s);
     assert.match(css, /\.detail-row,\s*\.events li\s*{[\s\S]*display:\s*flex[\s\S]*flex-wrap:\s*wrap/s);
@@ -302,11 +311,10 @@ async function main(): Promise<void> {
 
 function assertResponsiveCss(css: string): void {
   assert.match(css, /@media \(max-width: 640px\)/);
-  assert.match(css, /@media \(min-width: 1680px\)/);
-  assert.match(css, /\.kanban\s*{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(260px,\s*1fr\)\)/s);
-  assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.kanban\s*{[\s\S]*flex-direction:\s*column/s);
+  assert.match(css, /\.kanban\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(280px,\s*1fr\)\)[^}]*overflow:\s*auto/s);
+  assert.match(css, /@media \(max-width: 920px\)[\s\S]*\.kanban\s*{[\s\S]*max-height:\s*calc\(100vh - 176px\)/s);
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.kanban\s*{[\s\S]*flex-direction:\s*column[\s\S]*max-height:\s*none[\s\S]*overflow:\s*visible/s);
   assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.metrics\s*{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
-  assert.match(css, /@media \(min-width: 1680px\)[\s\S]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s);
 }
 
 function sliceFrom(value: string, start: string, end: string): string {

@@ -264,6 +264,14 @@ fn render_index(service: &TaskService) -> String {
     <div class="topbar__brand">
       <h1>Tasks Kanban</h1>
     </div>
+    <form class="topbar-search board-search" role="search" hx-get="{}" hx-target="#board" hx-swap="outerHTML">
+      <label class="board-search__field">
+        <input type="search" name="query" value="" placeholder="Search titles, ids, labels" aria-label="Search tasks" autocomplete="off">
+      </label>
+      <div class="board-search__actions">
+        <button type="submit" class="secondary">Search</button>
+      </div>
+    </form>
     <div class="topbar__actions">
       <div class="root" title="Store root">{}</div>
       <button type="button" data-dialog-open="create-task-dialog">Create task</button>
@@ -277,6 +285,7 @@ fn render_index(service: &TaskService) -> String {
         UiPaths::APP_CSS,
         UiPaths::HTMX_JS,
         UiPaths::APP_JS,
+        UiPaths::BOARD,
         escape_html(&service.root().display().to_string()),
         UiPaths::BOARD
     )

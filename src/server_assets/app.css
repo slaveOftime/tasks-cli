@@ -51,7 +51,14 @@ html {
   background: hsl(var(--border));
 }
 
+html, body, main, .kanban {
+  height: 100%;
+}
+
 body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   margin: 0;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -143,6 +150,7 @@ button.secondary {
 .topbar__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   min-width: 0;
 }
@@ -168,7 +176,8 @@ button.secondary {
 .board-shell {
   width: min(100%, 1920px);
   margin: 0 auto;
-  padding: 16px;
+  padding: 16px 16px 0 16px;
+  overflow: hidden;
 }
 
 .panel,
@@ -391,12 +400,22 @@ button.secondary {
   margin-bottom: 12px;
 }
 
+.topbar-search {
+  flex: 1 1 500px;
+  max-width: 560px;
+}
+
+.topbar-search.board-search {
+  width: 100%;
+  max-width: 300px;
+}
+
 .board-search {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  max-width: 500px;
+  gap: 4px;
+  max-width: 200px;
 }
 
 .board-search__field {
@@ -406,8 +425,9 @@ button.secondary {
 .board-search__field input {
   display: block;
   min-width: 0;
-  min-height: 38px;
+  height: 32px;
   font-size: 16px;
+  padding: 0 8px;
 }
 
 .board-search__actions {
@@ -418,7 +438,7 @@ button.secondary {
 }
 
 .board-search__actions button {
-  min-height: 38px;
+  height: 32px;
 }
 
 .board-search__summary {
@@ -516,9 +536,10 @@ button.secondary {
 
 .kanban {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(7, minmax(280px, 1fr));
   gap: 10px;
   align-items: start;
+  overflow: auto;
   padding-bottom: 12px;
 }
 
@@ -845,6 +866,10 @@ code {
 }
 
 @media (max-width: 920px) {
+  .topbar-search {
+    display: none;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;
@@ -875,7 +900,13 @@ code {
   }
 
   .kanban {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    max-height: calc(100vh - 176px);
+  }
+}
+
+@media (min-width: 921px) {
+  .board-toolbar {
+    display: none;
   }
 }
 
@@ -924,6 +955,7 @@ code {
 
   .board-shell {
     padding: 10px;
+    overflow-y: auto;
   }
 
   .dialog-grid {
@@ -935,6 +967,11 @@ code {
     margin-bottom: 12px;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .board-search {
+    width: 100%;
+    max-width: 100%;
   }
 
   .board-search__actions {
@@ -950,7 +987,9 @@ code {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    max-height: none;
     overflow: visible;
+    height: fit-content;
   }
 
   .column {
@@ -979,12 +1018,6 @@ code {
   .inline {
     align-items: stretch;
     flex-direction: column;
-  }
-}
-
-@media (min-width: 1680px) {
-  .kanban {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
 
