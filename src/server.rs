@@ -924,8 +924,8 @@ fn render_task_card(
         <section class="dialog-section">
             <h3>Checkpoint</h3>
             <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form data-ready-any>
-            <input name="note" placeholder="checkpoint note">
-            <input name="next_step" placeholder="next step">
+            <textarea name="note" placeholder="checkpoint note"></textarea>
+            <textarea name="next_step" placeholder="next step"></textarea>
             <input name="next_task" placeholder="next task id">
             <button type="submit" data-ready-submit hidden>Checkpoint</button>
             </form>
@@ -933,14 +933,14 @@ fn render_task_card(
         <section class="dialog-section">
             <h3>Block</h3>
             <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
-            <input name="reason" required placeholder="blocked reason">
+            <textarea name="reason" required placeholder="blocked reason"></textarea>
             <button type="submit" data-ready-submit hidden>Block</button>
             </form>
         </section>
         <section class="dialog-section">
             <h3>Note</h3>
             <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
-            <input name="text" required placeholder="note">
+            <textarea name="text" required placeholder="note"></textarea>
             <button type="submit" data-ready-submit hidden>Add note</button>
             </form>
         </section>

@@ -115,10 +115,9 @@ async function main(): Promise<void> {
     assertResponsiveCss(css);
     assert.match(css, /scrollbar-color:\s*hsl\(var\(--accent\)\)\s*hsl\(var\(--background\)\)/);
     assert.match(css, /\.app-dialog\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow:\s*visible/s);
-    assert.match(css, /\.dialog-card\s*{[\s\S]*overflow-x:\s*hidden/s);
-    assert.match(css, /\.dialog-card\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow-y:\s*auto/s);
-    assert.match(css, /\.dialog-card\s*{[\s\S]*padding-top:\s*38px/s);
-    assert.match(css, /\.dialog-close\s*{[\s\S]*position:\s*sticky;[\s\S]*top:\s*8px;[\s\S]*float:\s*right;[\s\S]*background:\s*transparent;[\s\S]*border:\s*1px solid transparent/s);
+    assert.match(css, /^\.dialog-card\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow:\s*hidden/sm);
+    assert.match(css, /\.dialog-content\s*{[\s\S]*overflow-y:\s*auto/s);
+    assert.match(css, /^\.dialog-close\s*{[\s\S]*position:\s*absolute;[\s\S]*right:\s*8px;[\s\S]*background:\s*transparent;[\s\S]*border:\s*1px solid transparent/sm);
     assert.doesNotMatch(css, /@media \(max-width: 640px\)[\s\S]*\.dialog-card > header\s*{[\s\S]*flex-direction:\s*column/s);
     assert.match(css, /input,\s*textarea\s*{[\s\S]*font-size:\s*16px/s);
     assert.match(css, /\.schedule-panel\[hidden\]\s*{[\s\S]*display:\s*none/s);
@@ -173,6 +172,12 @@ async function main(): Promise<void> {
     assert.match(seedDialog, /data-schedule-panel="interval"/);
     assert.match(seedDialog, /data-schedule-panel="cron" hidden/);
     assert.match(seedDialog, /name="cron" placeholder="cron expression" value="" disabled/);
+    assert.match(seedDialog, /<textarea name="note" placeholder="checkpoint note"><\/textarea>/);
+    assert.match(seedDialog, /<textarea name="next_step" placeholder="next step"><\/textarea>/);
+    assert.match(seedDialog, /<textarea name="reason" required placeholder="blocked reason"><\/textarea>/);
+    assert.match(seedDialog, /<textarea name="text" required placeholder="note"><\/textarea>/);
+    assert.match(seedDialog, /<input name="next_task" placeholder="next task id">/);
+    assert.match(seedDialog, /<input name="dependency" required placeholder="dependency id">/);
     assert.equal(countOccurrences(seedDialog, 'placeholder="optional ready at"'), 1);
     assert.match(seedDialog, /name="ready_at" type="datetime-local" step="1" placeholder="optional ready at" aria-label="Next ready at" value="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}" data-schedule-ready-at/);
 

@@ -344,7 +344,9 @@ button.secondary {
 }
 
 .create-form .form-actions {
-  align-self: end;
+  display: flex;
+  justify-content: end;
+  margin-top: 8px
 }
 
 .metrics {
