@@ -252,7 +252,7 @@ fn render_index(service: &TaskService) -> String {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>tli task board</title>
+  <title>Tasks Kanban</title>
   <link rel="stylesheet" href="{}">
   <script defer src="{}"></script>
   <script defer src="{}"></script>
@@ -260,7 +260,7 @@ fn render_index(service: &TaskService) -> String {
 <body>
   <header id="page-top" class="topbar">
     <div class="topbar__brand">
-      <h1>tli Kanban</h1>
+      <h1>Tasks Kanban</h1>
     </div>
     <div class="topbar__actions">
       <div class="root" title="Store root">{}</div>
@@ -634,10 +634,10 @@ fn render_board(service: &TaskService, query: &BoardQuery) -> Result<String> {
     </form>
   </div>
 </dialog>
-<section class="panel board-toolbar">
+<section class="board-toolbar">
   <form class="board-search" role="search" hx-get="{}" hx-target="#board" hx-swap="outerHTML">
     <label class="board-search__field">
-      <input type="search" name="query" value="{}" placeholder="Search titles, ids, labels" aria-label="Search tasks" autocomplete="off" hx-get="{}" hx-trigger="input changed delay:250ms, search" hx-include="closest form" hx-target="#board" hx-swap="outerHTML">
+      <input type="search" name="query" value="{}" placeholder="Search titles, ids, labels" aria-label="Search tasks" autocomplete="off">
     </label>
     <div class="board-search__actions">
       <button type="submit" class="secondary">Search</button>
@@ -650,20 +650,24 @@ fn render_board(service: &TaskService, query: &BoardQuery) -> Result<String> {
         escape_html(&create_task_path),
         escape_html(&search_input_path),
         escape_html(search_value),
-        escape_html(&search_input_path),
         clear_search_button,
         search_results_summary.unwrap_or_default(),
     )?;
-    for (label, class_name, count) in [
-        ("ready", "ready", snapshot.counts.ready),
-        ("todo", "todo", snapshot.counts.todo),
-        ("active", "active", snapshot.counts.active),
-        ("checkpoint", "checkpoint", snapshot.counts.checkpoint),
-        ("blocked", "blocked", snapshot.counts.blocked),
-        ("review", "review", snapshot.counts.review),
-        ("done", "done", snapshot.counts.done),
+    for (class_name, count) in [
+        ("ready", snapshot.counts.ready),
+        ("todo", snapshot.counts.todo),
+        ("active", snapshot.counts.active),
+        ("checkpoint", snapshot.counts.checkpoint),
+        ("blocked", snapshot.counts.blocked),
+        ("review", snapshot.counts.review),
+        ("done", snapshot.counts.done),
     ] {
-        render_status_summary_item(&mut html, label, class_name, count)?;
+        render_status_summary_item(
+            &mut html,
+            status_display_label(class_name),
+            class_name,
+            count,
+        )?;
     }
     write!(
         html,
@@ -719,14 +723,14 @@ fn render_column(
     let pagination = ColumnPagination::for_total(query.page_for(class_name), tasks.len());
     write!(
         html,
-        r#"<section id="{}" class="column column-{}"><header><h2>{}</h2><span>{}</span></header><div class="column-cards">"#,
+        r#"<section id="{}" class="column column-{}"><header><h2 class="column__title">{}</h2><span class="column__count">{}</span></header><div class="column-cards">"#,
         escape_html(&section_id),
         class_name,
         escape_html(title),
         tasks.len()
     )?;
     for task in tasks[pagination.start_index..pagination.end_index].iter() {
-        render_task_card(html, service, query, task)?;
+        render_task_card(html, service, query, task, class_name)?;
     }
     html.push_str("</div>");
     render_column_pagination(html, query, class_name, &pagination)?;
@@ -739,6 +743,7 @@ fn render_task_card(
     service: &TaskService,
     query: &BoardQuery,
     task: &TaskSummary,
+    status_class_name: &str,
 ) -> Result<()> {
     let detail = service.task_detail(&task.id)?;
     let events = service.task_events(Some(&task.id), Some(3))?;
@@ -746,12 +751,12 @@ fn render_task_card(
     let title = escape_html(&task.title);
     write!(
         html,
-        r#"<article class="task-card">
+        r#"<article class="task-card task-card--{}">
 <div class="task-card__head">
   <div class="task-card__title-row">
     <h3>{}</h3>
     <div class="labels">"#,
-        title
+        status_class_name, title
     )?;
     for label in &task.labels {
         write!(html, r#"<span>{}</span>"#, escape_html(label))?;
@@ -775,25 +780,13 @@ fn render_task_card(
         write!(html, r#"<p class="summary">{}</p>"#, escape_html(summary))?;
     }
     if let Some(reason) = detail.task.blocked_reason.as_deref() {
-        write!(
-            html,
-            r#"<p class="meta danger">blocked: {}</p>"#,
-            escape_html(reason)
-        )?;
+        render_detail_row(html, "blocked", reason, true)?;
     }
     if let Some(schedule) = &task.schedule {
-        write!(
-            html,
-            r#"<p class="meta">schedule {}</p>"#,
-            escape_html(&schedule.to_string())
-        )?;
+        render_detail_row(html, "schedule", &schedule.to_string(), false)?;
     }
     if !task.depends_on.is_empty() {
-        write!(
-            html,
-            r#"<p class="meta">depends on {}</p>"#,
-            escape_html(&task.depends_on.join(", "))
-        )?;
+        render_detail_row(html, "depends on", &task.depends_on.join(", "), false)?;
     }
     if !detail.blocked_by.is_empty() {
         let blocked_by = detail
@@ -802,11 +795,7 @@ fn render_task_card(
             .map(|task| task.id.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        write!(
-            html,
-            r#"<p class="meta danger">blocked by {}</p>"#,
-            escape_html(&blocked_by)
-        )?;
+        render_detail_row(html, "blocked by", &blocked_by, true)?;
     }
     if !task.continuation.is_empty() {
         let mut parts = Vec::new();
@@ -816,11 +805,7 @@ fn render_task_card(
         if let Some(next_task) = task.continuation.next_task.as_deref() {
             parts.push(format!("task: {next_task}"));
         }
-        write!(
-            html,
-            r#"<p class="meta">next {}</p>"#,
-            escape_html(&parts.join("; "))
-        )?;
+        render_detail_row(html, "next", &parts.join("; "), false)?;
     }
     if !events.is_empty() {
         html.push_str(r#"<ul class="events">"#);
@@ -952,6 +937,28 @@ fn render_task_card(
     Ok(())
 }
 
+fn render_detail_row(html: &mut String, label: &str, value: &str, danger: bool) -> Result<()> {
+    let label_class = if label == "depends on" {
+        "detail-row__label detail-row__label--warning"
+    } else {
+        "detail-row__label"
+    };
+    let value_class = if danger {
+        "detail-row__value danger"
+    } else {
+        "detail-row__value"
+    };
+    write!(
+        html,
+        r#"<p class="meta detail-row"><span class="{}">{}</span><span class="{}">{}</span></p>"#,
+        label_class,
+        escape_html(label),
+        value_class,
+        escape_html(value)
+    )?;
+    Ok(())
+}
+
 fn render_column_pagination(
     html: &mut String,
     query: &BoardQuery,
@@ -999,13 +1006,27 @@ fn render_status_summary_item(
     let section_id = status_section_id(class_name);
     write!(
         html,
-        r##"<a class="metrics__link" href="#{}" aria-label="Jump to {} tasks"><span>{} <strong>{}</strong></span></a>"##,
+        r##"<a class="metrics__link metrics__link--{}" href="#{}" aria-label="Jump to {} tasks"><span>{} <strong>{}</strong></span></a>"##,
+        class_name,
         escape_html(&section_id),
-        escape_html(label),
+        escape_html(class_name),
         escape_html(label),
         count
     )?;
     Ok(())
+}
+
+fn status_display_label(class_name: &str) -> &'static str {
+    match class_name {
+        "ready" => "Ready",
+        "todo" => "Todo",
+        "active" => "Active",
+        "checkpoint" => "Checkpoint",
+        "blocked" => "Blocked",
+        "review" => "Review",
+        "done" => "Done",
+        _ => "Unknown",
+    }
 }
 
 fn status_section_id(class_name: &str) -> String {
@@ -1332,13 +1353,16 @@ mod tests {
         assert!(html.contains(r#"aria-label="Task status summary""#));
         assert!(html.contains(r##"href="#status-ready""##));
         assert!(html.contains(r##"href="#status-checkpoint""##));
+        assert!(html.contains(r#"class="metrics__link metrics__link--ready""#));
         assert!(html.contains(r#"id="status-ready" class="column column-ready""#));
         assert!(html.contains(r#"data-scroll-top"#));
         assert!(html.contains(r#"hx-get="ui/board?done_page=2""#));
         assert!(html.contains(r#"hx-get="ui/board?todo_page=2""#));
         assert!(html.contains(r#"<code class="task-card__id">todo-task-01</code>"#));
+        assert!(!html.contains(r#"class="status-chip""#));
         assert!(!html.contains(r#"<code class="task-card__id">todo-task-17</code>"#));
         assert!(html.contains(r#"<code class="task-card__id">done-task-01</code>"#));
+        assert!(!html.contains(r#"status-chip--done"#));
         assert!(!html.contains(r#"<code class="task-card__id">done-task-16</code>"#));
         assert!(html.contains(r#"ui/tasks/done-task-01/done?todo_page=2&amp;done_page=2"#));
         assert!(!html.contains(r#"hx-get="/ui/board?todo_page=1&done_page=2""#));
@@ -1376,11 +1400,16 @@ mod tests {
         .unwrap();
 
         assert!(html.contains(r#"role="search""#));
+        assert!(html.contains(
+            r##"<form class="board-search" role="search" hx-get="ui/board" hx-target="#board" hx-swap="outerHTML">"##
+        ));
         assert!(html.contains(r#"name="query" value="alpha release""#));
+        assert!(!html.contains(r#"hx-trigger="input changed delay:500ms, search""#));
         assert!(html.contains(
             r#"class="board-search__summary">1 matching task for &quot;alpha release&quot;."#
         ));
         assert!(html.contains(r#"<code class="task-card__id">alpha-release</code>"#));
+        assert!(!html.contains(r#"class="status-chip""#));
         assert!(!html.contains(r#"<code class="task-card__id">beta-cleanup</code>"#));
         assert!(html.contains(r#"hx-post="ui/tasks?query=alpha%20release""#));
         assert!(html.contains(r#"ui/tasks/alpha-release/start?query=alpha%20release"#));

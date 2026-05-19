@@ -8,6 +8,13 @@
   --accent: 220 10% 14%;
   --primary: 160 84% 39%;
   --destructive: 0 72% 48%;
+  --status-ready: 196 88% 62%;
+  --status-todo: 221 84% 68%;
+  --status-active: 160 84% 48%;
+  --status-checkpoint: 42 95% 58%;
+  --status-blocked: 0 78% 63%;
+  --status-review: 280 84% 72%;
+  --status-done: 142 68% 52%;
   --border: 220 9% 16%;
   --input: 220 9% 16%;
   --ring: 160 84% 39%;
@@ -185,7 +192,7 @@ button.secondary {
   color: hsl(var(--foreground));
   background: transparent;
   border: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .app-dialog::backdrop {
@@ -195,7 +202,7 @@ button.secondary {
 
 .dialog-card {
   position: relative;
-  max-height: inherit;
+  max-height: min(780px, calc(100vh - 24px));
   overflow-x: hidden;
   overflow-y: auto;
   padding: 14px;
@@ -316,24 +323,30 @@ button.secondary {
 }
 
 .metrics {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .metrics__link {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  padding: 6px 10px;
+  min-height: 42px;
+  padding: 8px 12px 8px 14px;
   color: hsl(var(--muted-foreground));
   text-decoration: none;
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  letter-spacing: .06em;
+  overflow: hidden;
   transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
 
 .metrics__link:hover {
   color: hsl(var(--foreground));
-  background: hsl(var(--accent));
   border-color: hsl(var(--ring));
   transform: translateY(-1px);
 }
@@ -343,9 +356,16 @@ button.secondary {
   outline-offset: 2px;
 }
 
+.metrics__link span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
 .board-toolbar {
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .board-search {
@@ -363,6 +383,8 @@ button.secondary {
 .board-search__field input {
   display: block;
   min-width: 0;
+  min-height: 38px;
+  font-size: 16px;
 }
 
 .board-search__actions {
@@ -370,6 +392,10 @@ button.secondary {
   flex-wrap: nowrap;
   gap: 8px;
   justify-self: end;
+}
+
+.board-search__actions button {
+  min-height: 38px;
 }
 
 .board-search__summary {
@@ -381,6 +407,88 @@ button.secondary {
 
 .metrics__link strong {
   color: hsl(var(--foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 2ch;
+  padding-left: 10px;
+  border-left: 1px solid hsl(var(--status-color, var(--border)) / .22);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics__link--ready,
+.column-ready,
+.task-card--ready {
+  --status-color: var(--status-ready);
+}
+
+.metrics__link--todo,
+.column-todo,
+.task-card--todo {
+  --status-color: var(--status-todo);
+}
+
+.metrics__link--active,
+.column-active,
+.task-card--active {
+  --status-color: var(--status-active);
+}
+
+.metrics__link--checkpoint,
+.column-checkpoint,
+.task-card--checkpoint {
+  --status-color: var(--status-checkpoint);
+}
+
+.metrics__link--blocked,
+.column-blocked,
+.task-card--blocked {
+  --status-color: var(--status-blocked);
+}
+
+.metrics__link--review,
+.column-review,
+.task-card--review {
+  --status-color: var(--status-review);
+}
+
+.metrics__link--done,
+.column-done,
+.task-card--done {
+  --status-color: var(--status-done);
+}
+
+.metrics__link[class*="metrics__link--"] {
+  color: hsl(var(--status-color));
+  background: hsl(var(--card));
+  border-color: hsl(var(--status-color) / .26);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--status-color) / .08),
+    0 0 0 1px hsl(0 0% 100% / .02);
+}
+
+.metrics__link[class*="metrics__link--"] strong {
+  color: inherit;
+}
+
+.metrics__link[class*="metrics__link--"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, hsl(var(--status-color)), hsl(var(--status-color) / .2));
+}
+
+.metrics__link[class*="metrics__link--"]:hover {
+  color: hsl(var(--status-color));
+  background: hsl(var(--status-color) / .06);
+  border-color: hsl(var(--status-color) / .42);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--status-color) / .12),
+    0 0 0 1px hsl(var(--status-color) / .08);
 }
 
 .kanban {
@@ -397,6 +505,8 @@ button.secondary {
   min-height: 220px;
   padding: 10px;
   scroll-margin-top: 16px;
+  border-top-width: 3px;
+  border-top-color: hsl(var(--status-color) / .72);
 }
 
 .column header {
@@ -413,13 +523,23 @@ button.secondary {
   letter-spacing: .05em;
 }
 
+.column__title,
+.column__count {
+  color: hsl(var(--status-color));
+}
+
+.column__count {
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .column-cards {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
 
-.column header span {
+.column header span:not(.column__count) {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
 }
@@ -441,8 +561,14 @@ button.secondary {
 }
 
 .task-card {
+  --task-detail-label-width: clamp(9ch, 28%, 16ch);
   padding: 10px;
   min-width: 0;
+}
+
+.task-card[class*="task-card--"] {
+  border-color: hsl(var(--status-color) / .28);
+  box-shadow: inset 0 1px 0 hsl(var(--status-color) / .12);
 }
 
 .task-card h3 {
@@ -485,10 +611,12 @@ button.secondary {
 }
 
 .task-time {
+  align-self: stretch;
   min-width: 0;
   color: hsl(var(--muted-foreground));
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
@@ -523,6 +651,35 @@ code {
   word-break: break-word;
 }
 
+.detail-row,
+.events li {
+  display: grid;
+  grid-template-columns: var(--task-detail-label-width) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+.detail-row__label {
+  color: hsl(var(--muted-foreground));
+  min-width: 0;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.detail-row__label--warning {
+  color: hsl(var(--status-checkpoint));
+}
+
+.detail-row__value {
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .summary {
   margin: 6px 0 0;
   color: hsl(var(--foreground));
@@ -544,11 +701,7 @@ code {
 }
 
 .events li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px;
-  align-items: start;
-  min-width: 0;
+  gap: 8px;
 }
 
 .events li + li {
@@ -556,8 +709,12 @@ code {
 }
 
 .event-kind {
-  color: hsl(var(--primary));
-  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+  min-width: 0;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .event-message {
@@ -680,10 +837,6 @@ code {
     grid-column: auto;
   }
 
-  .board-toolbar {
-    padding: 10px;
-  }
-
   .scroll-top {
     right: 10px;
     bottom: 10px;
@@ -752,7 +905,7 @@ code {
 
   .metrics {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .board-search__actions {

@@ -67,6 +67,8 @@ async function main(): Promise<void> {
       '--cron',
       '0 22 * * *',
     ]);
+    await run(binary, ['--root', storeRoot, 'add', 'Depends task', '--id', 'depends-task']);
+    await run(binary, ['--root', storeRoot, 'dep', 'add', 'depends-task', 'seed-task']);
     for (let index = 1; index <= 16; index += 1) {
       const id = `done-overflow-${String(index).padStart(2, '0')}`;
       await run(binary, ['--root', storeRoot, 'add', `Done overflow ${index}`, '--id', id]);
@@ -79,7 +81,7 @@ async function main(): Promise<void> {
     const baseUrl = started.baseUrl;
 
     const index = await text(`${baseUrl}/`);
-    assert.match(index, /tli Kanban/);
+    assert.match(index, /Tasks Kanban/);
     assert.match(index, /href="assets\/app\.css"/);
     assert.match(index, /src="assets\/htmx\.js"/);
     assert.match(index, /data-dialog-open="create-task-dialog"/);
@@ -112,20 +114,40 @@ async function main(): Promise<void> {
     const css = await text(`${baseUrl}/assets/app.css`);
     assertResponsiveCss(css);
     assert.match(css, /scrollbar-color:\s*hsl\(var\(--accent\)\)\s*hsl\(var\(--background\)\)/);
+    assert.match(css, /\.app-dialog\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow:\s*visible/s);
     assert.match(css, /\.dialog-card\s*{[\s\S]*overflow-x:\s*hidden/s);
+    assert.match(css, /\.dialog-card\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow-y:\s*auto/s);
     assert.match(css, /\.dialog-close\s*{[\s\S]*position:\s*absolute;[\s\S]*right:\s*8px/s);
     assert.match(css, /\.schedule-panel\[hidden\]\s*{[\s\S]*display:\s*none/s);
     assert.match(css, /\.task-card__head\s*{[\s\S]*flex-direction:\s*column/s);
     assert.match(css, /\.task-card__id\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
-    assert.match(css, /\.events li\s*{[\s\S]*grid-template-columns:\s*auto minmax\(0,\s*1fr\)/s);
+    assert.match(css, /\.task-time\s*{[\s\S]*align-self:\s*stretch[\s\S]*text-align:\s*center/s);
     assert.match(css, /\.event-message\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
     assert.match(css, /\.column-pagination\s*{[\s\S]*justify-content:\s*space-between/s);
-    assert.match(css, /\.metrics__link\s*{[\s\S]*text-decoration:\s*none/s);
+    assert.match(css, /\.metrics\s*{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(132px,\s*1fr\)\)/s);
+    assert.match(css, /\.metrics__link\s*{[\s\S]*text-decoration:\s*none[\s\S]*text-transform:\s*uppercase[\s\S]*font-family:\s*ui-monospace/s);
+    assert.match(css, /\.metrics__link span\s*{[\s\S]*justify-content:\s*space-between[\s\S]*width:\s*100%/s);
+    assert.match(css, /\.metrics__link strong\s*{[\s\S]*border-left:\s*1px solid hsl\(var\(--status-color,\s*var\(--border\)\)\s*\/\s*\.22\)[\s\S]*font-variant-numeric:\s*tabular-nums/s);
+    assert.match(css, /--status-ready:\s*196 88% 62%/);
+    assert.match(css, /\.metrics__link--ready,\s*\.column-ready,\s*\.task-card--ready\s*{[\s\S]*--status-color:\s*var\(--status-ready\)/s);
+    assert.match(css, /\.metrics__link\[class\*="metrics__link--"\]::before\s*{[\s\S]*width:\s*2px[\s\S]*background:\s*linear-gradient\(180deg,\s*hsl\(var\(--status-color\)\),\s*hsl\(var\(--status-color\)\s*\/\s*\.2\)\)/s);
+    assert.match(css, /\.column\s*{[\s\S]*border-top-width:\s*3px[\s\S]*border-top-color:\s*hsl\(var\(--status-color\)\s*\/\s*\.72\)/s);
+    assert.doesNotMatch(css, /\.status-chip\s*{/);
     assert.match(css, /\.scroll-top\s*{[\s\S]*position:\s*fixed;[\s\S]*border-radius:\s*999px/s);
     assert.match(css, /\.scroll-top\[data-visible="true"\]\s*{[\s\S]*pointer-events:\s*auto/s);
     assert.match(css, /\.board-search\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
+    assert.match(css, /\.board-toolbar\s*{[\s\S]*margin-bottom:\s*8px/s);
+    assert.doesNotMatch(css, /@media \(max-width: 920px\)[\s\S]*\.board-toolbar\s*{[\s\S]*padding:/s);
     assert.match(css, /\.board-search__actions\s*{[\s\S]*display:\s*inline-flex[\s\S]*flex-wrap:\s*nowrap/s);
+    assert.match(css, /\.board-search__field input\s*{[\s\S]*min-height:\s*38px[\s\S]*font-size:\s*16px/s);
+    assert.match(css, /\.board-search__actions button\s*{[\s\S]*min-height:\s*38px/s);
     assert.match(css, /\.board-search__summary\s*{[\s\S]*grid-column:\s*1 \/ -1/s);
+    assert.match(css, /\.task-card\s*{[\s\S]*--task-detail-label-width:\s*clamp\(9ch,\s*28%,\s*16ch\)/s);
+    assert.match(css, /\.detail-row,\s*\.events li\s*{[\s\S]*grid-template-columns:\s*var\(--task-detail-label-width\)\s*minmax\(0,\s*1fr\)/s);
+    assert.match(css, /\.detail-row__label\s*{[\s\S]*color:\s*hsl\(var\(--muted-foreground\)\)[\s\S]*letter-spacing:\s*\.06em[\s\S]*text-transform:\s*uppercase/s);
+    assert.match(css, /\.detail-row__label--warning\s*{[\s\S]*color:\s*hsl\(var\(--status-checkpoint\)\)/s);
+    assert.match(css, /\.detail-row__value\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
+    assert.match(css, /\.event-kind\s*{[\s\S]*color:\s*hsl\(var\(--muted-foreground\)\)[\s\S]*letter-spacing:\s*\.06em[\s\S]*text-transform:\s*uppercase/s);
     assert.equal(css, await readFile(cssPath, 'utf8'));
 
     const board = await text(`${baseUrl}/ui/board`);
@@ -173,12 +195,21 @@ async function main(): Promise<void> {
     assert.match(board, /<nav class="metrics" aria-label="Task status summary">/);
     assert.match(board, /href="#status-ready" aria-label="Jump to ready tasks"/);
     assert.match(board, /href="#status-checkpoint" aria-label="Jump to checkpoint tasks"/);
+    assert.match(board, /<a class="metrics__link metrics__link--ready" href="#status-ready" aria-label="Jump to ready tasks"><span>Ready <strong>\d+<\/strong><\/span><\/a>/);
     assert.match(board, /<section id="status-ready" class="column column-ready">/);
     assert.match(board, /<section id="status-done" class="column column-done">/);
+    assert.match(board, /<article class="task-card task-card--ready">/);
+    assert.doesNotMatch(board, /status-chip/);
     assert.match(board, /data-scroll-top data-visible="false" aria-label="Scroll to top"/);
     assert.match(board, /class="scroll-top__icon" aria-hidden="true">&uarr;<\/span>/);
     assert.match(board, /class="board-search__actions"/);
+    assert.match(board, /<section class="board-toolbar">/);
+    assert.doesNotMatch(board, /<section class="panel board-toolbar">/);
+    assert.match(board, /<form class="board-search" role="search" hx-get="ui\/board" hx-target="#board" hx-swap="outerHTML">/);
     assert.match(board, /type="search" name="query" value="" placeholder="Search titles, ids, labels" aria-label="Search tasks"/);
+    assert.doesNotMatch(board, /type="search"[^>]*hx-trigger=/);
+    assert.match(board, /<p class="meta detail-row"><span class="detail-row__label">schedule<\/span><span class="detail-row__value">every 5m<\/span><\/p>/);
+    assert.match(board, /<p class="meta detail-row"><span class="detail-row__label detail-row__label--warning">depends on<\/span><span class="detail-row__value">seed-task<\/span><\/p>/);
     assert.doesNotMatch(board, /<span class="eyebrow">Search<\/span>/);
     assert.doesNotMatch(board, /Filter tasks across every column\./);
     assert.match(board, /<li><span class="event-kind">completed<\/span><span class="event-message">/);
@@ -215,15 +246,18 @@ async function main(): Promise<void> {
     const uiStarted = await postFormText(`${baseUrl}/ui/tasks/htmx-created/start`, {});
     assert.match(uiStarted, /column-active[\s\S]*htmx-created/);
     assert.match(uiStarted, /column-active[\s\S]*htmx-created[\s\S]*<button type="submit" disabled aria-disabled="true">Start<\/button>/);
+    assert.doesNotMatch(uiStarted, /status-chip/);
     assert.doesNotMatch(uiStarted, /class="status"/);
 
     const uiReview = await postFormText(`${baseUrl}/ui/tasks/htmx-created/review`, {});
     assert.match(uiReview, /column-review[\s\S]*htmx-created/);
     assert.match(uiReview, /column-review[\s\S]*htmx-created[\s\S]*<button type="submit" disabled aria-disabled="true">Review<\/button>/);
+    assert.doesNotMatch(uiReview, /status-chip/);
 
     const uiDone = await postFormText(`${baseUrl}/ui/tasks/htmx-created/done`, {});
     assert.match(uiDone, /column-done[\s\S]*htmx-created/);
     assert.match(uiDone, /column-done[\s\S]*htmx-created[\s\S]*<button type="submit" disabled aria-disabled="true">Done<\/button>/);
+    assert.doesNotMatch(uiDone, /status-chip/);
 
     const startedTask = await postJson<TaskRecord>(`${baseUrl}/api/tasks/created-from-e2e/start`, {
       note: 'Picked up in E2E',
@@ -254,6 +288,7 @@ function assertResponsiveCss(css: string): void {
   assert.match(css, /@media \(min-width: 1280px\)/);
   assert.match(css, /\.kanban\s*{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(260px,\s*1fr\)\)/s);
   assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.kanban\s*{[\s\S]*flex-direction:\s*column/s);
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.metrics\s*{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /@media \(min-width: 1280px\)[\s\S]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s);
 }
 
