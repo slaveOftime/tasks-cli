@@ -82,6 +82,7 @@ textarea {
   width: 100%;
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
+  font-size: 16px;
   padding: 6px 8px;
 }
 
@@ -203,14 +204,14 @@ button.secondary {
 .dialog-card {
   position: relative;
   max-height: min(780px, calc(100vh - 24px));
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 14px;
-  padding-top: 38px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   box-shadow: 0 20px 60px hsl(0 0% 0% / .35);
+  display: flex;
+  flex-direction: column;
 }
 
 .dialog-card > header {
@@ -219,14 +220,17 @@ button.secondary {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  margin-bottom: 12px;
-  padding-right: 28px;
+  margin-bottom: 16px;
+  padding-right: 32px;
 }
 
 .dialog-close {
   position: absolute;
-  top: 8px;
+  top: 32px;
   right: 8px;
+  z-index: 6;
+  float: right;
+  margin: -30px -6px 2px auto;
   width: 28px;
   min-width: 28px;
   height: 28px;
@@ -235,8 +239,8 @@ button.secondary {
   place-items: center;
   padding: 0;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--secondary));
-  border: 1px solid hsl(var(--border));
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   font-size: 18px;
   line-height: 1;
@@ -244,7 +248,20 @@ button.secondary {
 
 .dialog-close:hover {
   color: hsl(var(--foreground));
-  background: hsl(var(--accent));
+  background: hsl(var(--accent) / .72);
+}
+
+.dialog-close:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.dialog-close + * {
+  clear: both;
+}
+
+.dialog-content {
+  overflow-y: auto;
 }
 
 .dialog-grid {
@@ -308,6 +325,14 @@ button.secondary {
   display: none;
 }
 
+.schedule-clear-form {
+  margin-top: 8px;
+}
+
+.schedule-clear-form button {
+  width: 100%;
+}
+
 .create-form {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(180px, 1fr) auto;
@@ -369,7 +394,7 @@ button.secondary {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  max-width: 400px;
+  max-width: 500px;
 }
 
 .board-search__field {
@@ -715,6 +740,13 @@ code {
   font-weight: 500;
 }
 
+.event-time {
+  flex: 0 0 100%;
+  color: hsl(var(--muted-foreground));
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+}
+
 .event-message {
   min-width: 0;
   text-align: left;
@@ -890,11 +922,6 @@ code {
 
   .board-shell {
     padding: 10px;
-  }
-
-  .dialog-card > header {
-    align-items: stretch;
-    flex-direction: column;
   }
 
   .dialog-grid {

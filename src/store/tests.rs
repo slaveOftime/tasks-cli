@@ -3,6 +3,7 @@ use tempfile::TempDir;
 
 use super::helpers::{next_scheduled_ready_at, slugify};
 use super::*;
+use crate::root::format_timestamp;
 
 #[test]
 fn slugify_compacts_non_identifier_characters() {
@@ -152,6 +153,11 @@ fn scheduled_tasks_rearm_to_todo_with_next_ready_at() {
         )
         .unwrap()
     );
+    let events = store.read_events(Some("daily"), Some(1)).unwrap();
+    let message = &events[0].message;
+    assert!(message.contains("next ready "));
+    assert!(message.contains(&format_timestamp(&completed.summary.ready_at.unwrap())));
+    assert!(!message.contains('T'));
 }
 
 #[test]

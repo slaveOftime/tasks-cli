@@ -93,7 +93,6 @@ async function main(): Promise<void> {
     assert.match(appJs, /showModal\(\)/);
     assert.match(appJs, /data-ready-submit/);
     assert.match(appJs, /data-schedule-form/);
-    assert.match(appJs, /data-schedule-ready-at/);
     assert.match(appJs, /data-scroll-top/);
     assert.match(appJs, /window\.scrollTo\(\{ top: 0, behavior: 'smooth' }/);
 
@@ -101,7 +100,6 @@ async function main(): Promise<void> {
     assert.match(htmx, /new URLSearchParams\(\)/);
     assert.match(htmx, /tli:content-updated/);
     assert.match(htmx, /form\[hx-post], form\[hx-get]/);
-    assert.match(htmx, /if \(isFormControl\(el\) && el\.tagName !== 'BUTTON'\) return;/);
     assert.match(htmx, /document\.addEventListener\('input'/);
     assert.match(htmx, /document\.addEventListener\('search'/);
     assert.match(htmx, /var pendingRequests = new Map\(\)/);
@@ -109,6 +107,8 @@ async function main(): Promise<void> {
     assert.match(htmx, /!current \|\| current\.token !== token/);
     assert.match(htmx, /var nextTarget = document\.querySelector\(selector\)/);
     assert.match(htmx, /if \(error && error\.name === 'AbortError'\) return;/);
+    assert.match(htmx, /\[hx-get\]:not\(form\):not\(\[hx-trigger~="load"\]\)/);
+    assert.match(htmx, /isFormControl\(event\.target\)/);
     assert.doesNotMatch(htmx, /request\('POST'[^;]+new FormData/s);
 
     const css = await text(`${baseUrl}/assets/app.css`);
@@ -117,14 +117,19 @@ async function main(): Promise<void> {
     assert.match(css, /\.app-dialog\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow:\s*visible/s);
     assert.match(css, /\.dialog-card\s*{[\s\S]*overflow-x:\s*hidden/s);
     assert.match(css, /\.dialog-card\s*{[\s\S]*max-height:\s*min\(780px,\s*calc\(100vh - 24px\)\)[\s\S]*overflow-y:\s*auto/s);
-    assert.match(css, /\.dialog-close\s*{[\s\S]*position:\s*absolute;[\s\S]*right:\s*8px/s);
+    assert.match(css, /\.dialog-card\s*{[\s\S]*padding-top:\s*38px/s);
+    assert.match(css, /\.dialog-close\s*{[\s\S]*position:\s*sticky;[\s\S]*top:\s*8px;[\s\S]*float:\s*right;[\s\S]*background:\s*transparent;[\s\S]*border:\s*1px solid transparent/s);
+    assert.doesNotMatch(css, /@media \(max-width: 640px\)[\s\S]*\.dialog-card > header\s*{[\s\S]*flex-direction:\s*column/s);
+    assert.match(css, /input,\s*textarea\s*{[\s\S]*font-size:\s*16px/s);
     assert.match(css, /\.schedule-panel\[hidden\]\s*{[\s\S]*display:\s*none/s);
+    assert.match(css, /\.schedule-clear-form\s*{[\s\S]*margin-top:\s*8px/s);
     assert.match(css, /\.task-card__head\s*{[\s\S]*flex-direction:\s*column/s);
     assert.match(css, /\.task-card__id\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
-    assert.match(css, /\.task-time\s*{[\s\S]*align-self:\s*stretch[\s\S]*text-align:\s*center/s);
+    assert.match(css, /\.task-time\s*{[\s\S]*text-align:\s*center/s);
+    assert.match(css, /\.event-time\s*{[\s\S]*font-family:\s*ui-monospace/s);
     assert.match(css, /\.event-message\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
     assert.match(css, /\.column-pagination\s*{[\s\S]*justify-content:\s*space-between/s);
-    assert.match(css, /\.metrics\s*{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(132px,\s*1fr\)\)/s);
+    assert.match(css, /\.metrics\s*{[\s\S]*display:\s*none/s);
     assert.match(css, /\.metrics__link\s*{[\s\S]*text-decoration:\s*none[\s\S]*text-transform:\s*uppercase[\s\S]*font-family:\s*ui-monospace/s);
     assert.match(css, /\.metrics__link span\s*{[\s\S]*justify-content:\s*space-between[\s\S]*width:\s*100%/s);
     assert.match(css, /\.metrics__link strong\s*{[\s\S]*border-left:\s*1px solid hsl\(var\(--status-color,\s*var\(--border\)\)\s*\/\s*\.22\)[\s\S]*font-variant-numeric:\s*tabular-nums/s);
@@ -136,14 +141,14 @@ async function main(): Promise<void> {
     assert.match(css, /\.scroll-top\s*{[\s\S]*position:\s*fixed;[\s\S]*border-radius:\s*999px/s);
     assert.match(css, /\.scroll-top\[data-visible="true"\]\s*{[\s\S]*pointer-events:\s*auto/s);
     assert.match(css, /\.board-search\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
-    assert.match(css, /\.board-toolbar\s*{[\s\S]*margin-bottom:\s*8px/s);
+    assert.match(css, /\.board-toolbar\s*{[\s\S]*margin-bottom:\s*12px/s);
     assert.doesNotMatch(css, /@media \(max-width: 920px\)[\s\S]*\.board-toolbar\s*{[\s\S]*padding:/s);
     assert.match(css, /\.board-search__actions\s*{[\s\S]*display:\s*inline-flex[\s\S]*flex-wrap:\s*nowrap/s);
     assert.match(css, /\.board-search__field input\s*{[\s\S]*min-height:\s*38px[\s\S]*font-size:\s*16px/s);
     assert.match(css, /\.board-search__actions button\s*{[\s\S]*min-height:\s*38px/s);
     assert.match(css, /\.board-search__summary\s*{[\s\S]*grid-column:\s*1 \/ -1/s);
     assert.match(css, /\.task-card\s*{[\s\S]*--task-detail-label-width:\s*clamp\(9ch,\s*28%,\s*16ch\)/s);
-    assert.match(css, /\.detail-row,\s*\.events li\s*{[\s\S]*grid-template-columns:\s*var\(--task-detail-label-width\)\s*minmax\(0,\s*1fr\)/s);
+    assert.match(css, /\.detail-row,\s*\.events li\s*{[\s\S]*display:\s*flex[\s\S]*flex-wrap:\s*wrap/s);
     assert.match(css, /\.detail-row__label\s*{[\s\S]*color:\s*hsl\(var\(--muted-foreground\)\)[\s\S]*letter-spacing:\s*\.06em[\s\S]*text-transform:\s*uppercase/s);
     assert.match(css, /\.detail-row__label--warning\s*{[\s\S]*color:\s*hsl\(var\(--status-checkpoint\)\)/s);
     assert.match(css, /\.detail-row__value\s*{[\s\S]*text-align:\s*left;[\s\S]*overflow-wrap:\s*anywhere/s);
@@ -169,25 +174,27 @@ async function main(): Promise<void> {
     assert.match(seedDialog, /data-schedule-panel="cron" hidden/);
     assert.match(seedDialog, /name="cron" placeholder="cron expression" value="" disabled/);
     assert.equal(countOccurrences(seedDialog, 'placeholder="optional ready at"'), 1);
-    assert.match(seedDialog, /name="ready_at" placeholder="optional ready at" value="2026-05-12T01:55:46\+00:00" data-schedule-ready-at/);
+    assert.match(seedDialog, /name="ready_at" type="datetime-local" step="1" placeholder="optional ready at" aria-label="Next ready at" value="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}" data-schedule-ready-at/);
 
     const scheduledDialog = sliceFrom(board, '<dialog id="manage-scheduled-task"', '</dialog>');
-    assert.match(scheduledDialog, /value="clear"/);
+    assert.match(scheduledDialog, /class="schedule-clear-form"/);
+    assert.match(scheduledDialog, /<input type="hidden" name="clear" value="true">/);
+    assert.match(scheduledDialog, />Clear schedule<\/button>/);
     assert.match(scheduledDialog, /name="schedule_mode" value="interval" checked/);
     assert.match(scheduledDialog, /name="every_minutes" type="number" min="1" placeholder="every minutes" value="5"/);
     assert.match(scheduledDialog, /data-schedule-panel="cron" hidden/);
     assert.equal(countOccurrences(scheduledDialog, 'placeholder="optional ready at"'), 1);
-    assert.match(scheduledDialog, /name="ready_at" placeholder="optional ready at" value="[^"]*" data-schedule-ready-at/);
+    assert.match(scheduledDialog, /name="ready_at" type="datetime-local" step="1" placeholder="optional ready at" aria-label="Next ready at" value="[^"]*" data-schedule-ready-at/);
 
     const cronDialog = sliceFrom(board, '<dialog id="manage-cron-task"', '</dialog>');
-    assert.match(cronDialog, /value="clear"/);
+    assert.match(cronDialog, /class="schedule-clear-form"/);
     assert.match(cronDialog, /name="schedule_mode" value="cron" checked/);
     assert.match(cronDialog, /data-schedule-panel="interval" hidden/);
     assert.match(cronDialog, /name="every_minutes" type="number" min="1" placeholder="every minutes" value="" disabled/);
     assert.match(cronDialog, /data-schedule-panel="cron"/);
     assert.match(cronDialog, /name="cron" placeholder="cron expression" value="0 22 \* \* \*"/);
     assert.equal(countOccurrences(cronDialog, 'placeholder="optional ready at"'), 1);
-    assert.match(cronDialog, /name="ready_at" placeholder="optional ready at" value="[^"]*" data-schedule-ready-at/);
+    assert.match(cronDialog, /name="ready_at" type="datetime-local" step="1" placeholder="optional ready at" aria-label="Next ready at" value="[^"]*" data-schedule-ready-at/);
     assert.match(board, /class="task-card__head"[\s\S]*<h3>Seed task<\/h3>[\s\S]*class="labels"/);
     assert.match(board, /<time class="task-time" datetime="2026-05-12T01:55:46\+00:00">[^<]+<\/time>/);
     assert.doesNotMatch(board, />2026-05-12T01:55:46\+00:00<\/time>/);
@@ -212,7 +219,7 @@ async function main(): Promise<void> {
     assert.match(board, /<p class="meta detail-row"><span class="detail-row__label detail-row__label--warning">depends on<\/span><span class="detail-row__value">seed-task<\/span><\/p>/);
     assert.doesNotMatch(board, /<span class="eyebrow">Search<\/span>/);
     assert.doesNotMatch(board, /Filter tasks across every column\./);
-    assert.match(board, /<li><span class="event-kind">completed<\/span><span class="event-message">/);
+    assert.match(board, /<li><div class="event-kind">completed<time class="event-time" datetime="[^"]+">\([^)]+\)<\/time><\/div>/);
     assert.match(board, /column-pagination/);
     assert.match(board, /hx-get="ui\/board\?done_page=2"/);
     assert.match(board, /Page 1 of 2 · 1-15 of 16/);
@@ -256,7 +263,12 @@ async function main(): Promise<void> {
 
     const uiDone = await postFormText(`${baseUrl}/ui/tasks/htmx-created/done`, {});
     assert.match(uiDone, /column-done[\s\S]*htmx-created/);
-    assert.match(uiDone, /column-done[\s\S]*htmx-created[\s\S]*<button type="submit" disabled aria-disabled="true">Done<\/button>/);
+    const doneCard = sliceTaskCard(uiDone, 'htmx-created');
+    assert.doesNotMatch(doneCard, /<div class="actions">/);
+    assert.doesNotMatch(doneCard, /<button[\s\S]*>Start<\/button>/);
+    assert.doesNotMatch(doneCard, /<button[\s\S]*>Review<\/button>/);
+    assert.doesNotMatch(doneCard, /<button[\s\S]*>Done<\/button>/);
+    assert.doesNotMatch(doneCard, /data-dialog-open="manage-htmx-created"/);
     assert.doesNotMatch(uiDone, /status-chip/);
 
     const startedTask = await postJson<TaskRecord>(`${baseUrl}/api/tasks/created-from-e2e/start`, {
@@ -285,11 +297,11 @@ async function main(): Promise<void> {
 
 function assertResponsiveCss(css: string): void {
   assert.match(css, /@media \(max-width: 640px\)/);
-  assert.match(css, /@media \(min-width: 1280px\)/);
+  assert.match(css, /@media \(min-width: 1680px\)/);
   assert.match(css, /\.kanban\s*{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(260px,\s*1fr\)\)/s);
   assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.kanban\s*{[\s\S]*flex-direction:\s*column/s);
   assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.metrics\s*{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
-  assert.match(css, /@media \(min-width: 1280px\)[\s\S]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /@media \(min-width: 1680px\)[\s\S]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s);
 }
 
 function sliceFrom(value: string, start: string, end: string): string {
@@ -302,6 +314,17 @@ function sliceFrom(value: string, start: string, end: string): string {
 
 function countOccurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
+}
+
+function sliceTaskCard(value: string, taskId: string): string {
+  const idMarker = `<code class="task-card__id">${taskId}</code>`;
+  const idIndex = value.indexOf(idMarker);
+  assert.notEqual(idIndex, -1, `missing task card id ${taskId}`);
+  const startIndex = value.lastIndexOf('<article ', idIndex);
+  assert.notEqual(startIndex, -1, `missing task card start ${taskId}`);
+  const endIndex = value.indexOf('</article>', idIndex);
+  assert.notEqual(endIndex, -1, `missing task card end ${taskId}`);
+  return value.slice(startIndex, endIndex + '</article>'.length);
 }
 
 async function startServer(storeRoot: string): Promise<{

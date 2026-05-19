@@ -1,5 +1,7 @@
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+#[cfg(debug_assertions)]
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -280,28 +282,51 @@ fn render_index(service: &TaskService) -> String {
     )
 }
 
-async fn asset_css() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], APP_CSS)
+async fn asset_css() -> Response {
+    asset_response("text/css; charset=utf-8", "app.css", APP_CSS)
 }
 
-async fn asset_htmx() -> impl IntoResponse {
-    (
-        [(
-            header::CONTENT_TYPE,
-            "application/javascript; charset=utf-8",
-        )],
-        HTMX_JS,
-    )
+async fn asset_htmx() -> Response {
+    asset_response("application/javascript; charset=utf-8", "htmx.js", HTMX_JS)
 }
 
-async fn asset_js() -> impl IntoResponse {
-    (
-        [(
-            header::CONTENT_TYPE,
-            "application/javascript; charset=utf-8",
-        )],
-        APP_JS,
-    )
+async fn asset_js() -> Response {
+    asset_response("application/javascript; charset=utf-8", "app.js", APP_JS)
+}
+
+fn asset_response(content_type: &'static str, filename: &str, embedded: &'static str) -> Response {
+    match asset_text(filename, embedded) {
+        Ok(body) => ([(header::CONTENT_TYPE, content_type)], body).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("failed to read asset '{filename}': {error}"),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(debug_assertions)]
+fn asset_text(filename: &str, embedded: &'static str) -> std::io::Result<String> {
+    asset_text_from_path(&debug_asset_path(filename), embedded)
+}
+
+#[cfg(not(debug_assertions))]
+fn asset_text(_filename: &str, embedded: &'static str) -> std::io::Result<String> {
+    Ok(embedded.to_string())
+}
+
+#[cfg(debug_assertions)]
+fn asset_text_from_path(path: &FsPath, _embedded: &'static str) -> std::io::Result<String> {
+    std::fs::read_to_string(path)
+}
+
+#[cfg(debug_assertions)]
+fn debug_asset_path(filename: &str) -> PathBuf {
+    FsPath::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("server_assets")
+        .join(filename)
 }
 
 async fn api_state(
@@ -810,15 +835,31 @@ fn render_task_card(
     if !events.is_empty() {
         html.push_str(r#"<ul class="events">"#);
         for event in events {
+            let event_label = format_card_timestamp(event.at);
             write!(
                 html,
-                r#"<li><div class="event-kind">{}</div><div class="event-message">{}</div></li>"#,
+                r#"<li><div class="event-kind">{}<time class="event-time" datetime="{}">({})</time></div>"#,
                 escape_html(&event.kind.to_string()),
-                escape_html(&event.message)
+                escape_html(&event.at.to_rfc3339()),
+                escape_html(&event_label),
             )?;
+            if !event.message.is_empty() {
+                write!(
+                    html,
+                    r#"<div class="event-message">{}</div>"#,
+                    escape_html(&event.message)
+                )?;
+            }
+            html.push_str("</li>");
         }
         html.push_str("</ul>");
     }
+
+    if task.status == TaskStatus::Done {
+        html.push_str("</article>");
+        return Ok(());
+    }
+
     let start_disabled = disabled_attr(task.status == TaskStatus::Active);
     let review_disabled = disabled_attr(task.status == TaskStatus::Review);
     let done_disabled = disabled_attr(task.status == TaskStatus::Done);
@@ -872,48 +913,50 @@ fn render_task_card(
 <dialog id="manage-{}" class="app-dialog">
   <div class="dialog-card">
     <header>
-      <div>
+        <div>
         <p class="eyebrow">manage task</p>
         <h2>{}</h2>
-      </div>
-      <button type="button" class="dialog-close" data-dialog-close aria-label="Close dialog">&times;</button>
+        </div>
     </header>
-    <div class="dialog-grid">
-      <section class="dialog-section">
-        <h3>Checkpoint</h3>
-        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form data-ready-any>
-          <input name="note" placeholder="checkpoint note">
-          <input name="next_step" placeholder="next step">
-          <input name="next_task" placeholder="next task id">
-          <button type="submit" data-ready-submit hidden>Checkpoint</button>
-        </form>
-      </section>
-      <section class="dialog-section">
-        <h3>Block</h3>
-        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
-          <input name="reason" required placeholder="blocked reason">
-          <button type="submit" data-ready-submit hidden>Block</button>
-        </form>
-      </section>
-      <section class="dialog-section">
-        <h3>Note</h3>
-        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
-          <input name="text" required placeholder="note">
-          <button type="submit" data-ready-submit hidden>Add note</button>
-        </form>
-      </section>
-      {}
-      <section class="dialog-section">
-        <h3>Dependencies</h3>
-        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
-          <input name="dependency" required placeholder="dependency id">
-          <button type="submit" data-ready-submit hidden>Add dep</button>
-        </form>
-        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
-          <input name="dependency" required placeholder="dependency id">
-          <button type="submit" data-ready-submit hidden>Remove dep</button>
-        </form>
-      </section>
+    <button type="button" class="dialog-close" data-dialog-close aria-label="Close dialog">&times;</button>
+    <div class="dialog-content">
+        <div class="dialog-grid">
+        <section class="dialog-section">
+            <h3>Checkpoint</h3>
+            <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form data-ready-any>
+            <input name="note" placeholder="checkpoint note">
+            <input name="next_step" placeholder="next step">
+            <input name="next_task" placeholder="next task id">
+            <button type="submit" data-ready-submit hidden>Checkpoint</button>
+            </form>
+        </section>
+        <section class="dialog-section">
+            <h3>Block</h3>
+            <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
+            <input name="reason" required placeholder="blocked reason">
+            <button type="submit" data-ready-submit hidden>Block</button>
+            </form>
+        </section>
+        <section class="dialog-section">
+            <h3>Note</h3>
+            <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack" data-ready-form>
+            <input name="text" required placeholder="note">
+            <button type="submit" data-ready-submit hidden>Add note</button>
+            </form>
+        </section>
+        {}
+        <section class="dialog-section">
+            <h3>Dependencies</h3>
+            <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
+            <input name="dependency" required placeholder="dependency id">
+            <button type="submit" data-ready-submit hidden>Add dep</button>
+            </form>
+            <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="inline" data-ready-form>
+            <input name="dependency" required placeholder="dependency id">
+            <button type="submit" data-ready-submit hidden>Remove dep</button>
+            </form>
+        </section>
+        </div>
     </div>
   </div>
 </dialog>
@@ -965,6 +1008,10 @@ fn render_column_pagination(
     class_name: &str,
     pagination: &ColumnPagination,
 ) -> Result<()> {
+    if pagination.total_pages <= 1 {
+        return Ok(());
+    }
+
     let range_label = if pagination.total_items == 0 {
         "0 tasks".to_string()
     } else {
@@ -1049,6 +1096,13 @@ fn format_card_timestamp(value: DateTime<Utc>) -> String {
         .to_string()
 }
 
+fn format_datetime_local_value(value: DateTime<Utc>) -> String {
+    value
+        .with_timezone(&Local)
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string()
+}
+
 fn render_schedule_section(
     id: &str,
     schedule: Option<&TaskSchedule>,
@@ -1094,7 +1148,8 @@ fn render_schedule_section(
         <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="stack schedule-form" data-schedule-form>
           <div class="toggle-group" role="radiogroup" aria-label="Schedule mode">
             <label><input type="radio" name="schedule_mode" value="interval"{}> Interval</label>
-            <label><input type="radio" name="schedule_mode" value="cron"{}> Cron</label>"##,
+            <label><input type="radio" name="schedule_mode" value="cron"{}> Cron</label>
+          </div>"##,
         escape_html(&board_action_path(
             &UiPaths::task_action(id, "schedule"),
             query_string
@@ -1102,26 +1157,19 @@ fn render_schedule_section(
         interval_checked,
         cron_checked
     )?;
-    if schedule.is_some() {
-        html.push_str(
-            r#"
-            <label><input type="radio" name="schedule_mode" value="clear"> Clear</label>"#,
-        );
-    }
     let ready_at_value = ready_at
-        .map(|value| escape_html(&value.to_rfc3339()))
+        .map(|value| escape_html(&format_datetime_local_value(value)))
         .unwrap_or_default();
     write!(
         html,
         r#"
-          </div>
           <div class="schedule-panel" data-schedule-panel="interval"{}>
             <input name="every_minutes" type="number" min="1" placeholder="every minutes" value="{}"{}>
           </div>
           <div class="schedule-panel" data-schedule-panel="cron"{}>
             <input name="cron" placeholder="cron expression" value="{}"{}>
           </div>
-          <input name="ready_at" placeholder="optional ready at" value="{}" data-schedule-ready-at>"#,
+          <input name="ready_at" type="datetime-local" step="1" placeholder="optional ready at" aria-label="Next ready at" value="{}" data-schedule-ready-at>"#,
         interval_hidden,
         interval_value,
         interval_disabled,
@@ -1130,19 +1178,27 @@ fn render_schedule_section(
         cron_disabled,
         ready_at_value
     )?;
-    if schedule.is_some() {
-        html.push_str(
-            r#"
-          <div class="schedule-panel" data-schedule-panel="clear" hidden>
-            <input type="hidden" name="clear" value="true" disabled>
-            <p class="meta">Remove the recurring schedule and pending ready time.</p>
-          </div>"#,
-        );
-    }
     html.push_str(
         r#"
           <button type="submit" data-ready-submit hidden>Save schedule</button>
-        </form>
+        </form>"#,
+    );
+    if schedule.is_some() {
+        write!(
+            html,
+            r##"
+        <form hx-post="{}" hx-target="#board" hx-swap="outerHTML" class="schedule-clear-form">
+          <input type="hidden" name="clear" value="true">
+          <button type="submit" class="secondary">Clear schedule</button>
+        </form>"##,
+            escape_html(&board_action_path(
+                &UiPaths::task_action(id, "schedule"),
+                query_string
+            ))
+        )?;
+    }
+    html.push_str(
+        r#"
       </section>"#,
     );
     Ok(html)
@@ -1364,7 +1420,8 @@ mod tests {
         assert!(html.contains(r#"<code class="task-card__id">done-task-01</code>"#));
         assert!(!html.contains(r#"status-chip--done"#));
         assert!(!html.contains(r#"<code class="task-card__id">done-task-16</code>"#));
-        assert!(html.contains(r#"ui/tasks/done-task-01/done?todo_page=2&amp;done_page=2"#));
+        assert!(!html.contains(r#"ui/tasks/done-task-01/done?todo_page=2&amp;done_page=2"#));
+        assert!(!html.contains(r#"data-dialog-open="manage-done-task-01""#));
         assert!(!html.contains(r#"hx-get="/ui/board?todo_page=1&done_page=2""#));
     }
 
@@ -1413,7 +1470,43 @@ mod tests {
         assert!(!html.contains(r#"<code class="task-card__id">beta-cleanup</code>"#));
         assert!(html.contains(r#"hx-post="ui/tasks?query=alpha%20release""#));
         assert!(html.contains(r#"ui/tasks/alpha-release/start?query=alpha%20release"#));
-        assert!(html.contains(r#"hx-get="ui/board?query=alpha%20release""#));
+        assert!(!html.contains("Page 1 of 1"));
         assert!(!html.contains("Filter tasks across every column."));
+    }
+
+    #[test]
+    fn board_hides_pagination_for_single_page_columns() {
+        let temp = TempDir::new().unwrap();
+        let store_root = temp.path().join(".tli");
+        fs::create_dir_all(&store_root).unwrap();
+        let service = TaskService::new(TaskStore::new(store_root));
+        service
+            .add_task(AddTaskRequest {
+                title: "Only task".into(),
+                id: Some("only-task".into()),
+                ready_at: Some("2099-01-01T00:00:00Z".into()),
+                ..AddTaskRequest::default()
+            })
+            .unwrap();
+
+        let html = render_board(&service, &BoardQuery::default()).unwrap();
+
+        assert!(!html.contains(r#"column-pagination"#));
+        assert!(!html.contains("Page 1 of 1"));
+        assert!(!html.contains(">Prev</button>"));
+        assert!(!html.contains(">Next</button>"));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_assets_are_read_from_disk() {
+        let temp = TempDir::new().unwrap();
+        let asset_path = temp.path().join("app.css");
+        fs::write(&asset_path, "body { color: red; }").unwrap();
+
+        assert_eq!(
+            super::asset_text_from_path(&asset_path, "embedded").unwrap(),
+            "body { color: red; }"
+        );
     }
 }

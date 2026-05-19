@@ -216,7 +216,7 @@ pub(super) fn describe_progress_message(continuation: &TaskContinuation) -> Stri
     if let Some(task) = continuation.next_task.as_deref() {
         parts.push(format!("task={task}"));
     }
-    format!("{}", parts.join(", "))
+    parts.join(", ")
 }
 
 pub(super) fn ensure_task_exists(index: &StoreIndex, task_id: &str) -> Result<()> {

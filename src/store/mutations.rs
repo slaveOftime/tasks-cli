@@ -1,11 +1,11 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Local, Utc};
-use clap::builder::Str;
 
 use crate::model::{
     StoreIndex, TaskContinuation, TaskEvent, TaskEventKind, TaskNote, TaskRecord, TaskStatus,
     TaskSummary,
 };
+use crate::root::format_timestamp;
 
 use super::{
     AddTaskInput, ProgressUpdate, ScheduleUpdate, TaskStore,
@@ -163,15 +163,13 @@ impl TaskStore {
             };
             task.summary.schedule = Some(schedule.clone());
             task.summary.ready_at = resolve_ready_at(update.ready_at, Some(&schedule), now)?;
-            Ok(format!(
-                "updated at: {} next={}",
-                schedule,
-                task.summary
-                    .ready_at
-                    .as_ref()
-                    .map(DateTime::<Utc>::to_rfc3339)
-                    .unwrap_or_else(|| "none".to_string())
-            ))
+            let ready_at = task
+                .summary
+                .ready_at
+                .as_ref()
+                .map(format_timestamp)
+                .unwrap_or_else(|| "none".to_string());
+            Ok(format!("{schedule}; next ready {ready_at}"))
         })
     }
 
@@ -195,17 +193,19 @@ impl TaskStore {
                 task.summary.schedule = None;
                 task.summary.ready_at = None;
                 task.summary.status = TaskStatus::Done;
-                return Ok(describe_progress_message(&task.summary.continuation));
+                return Ok(append_event_detail(
+                    describe_progress_message(&task.summary.continuation),
+                    "schedule cleared".to_string(),
+                ));
             }
 
             if let Some(schedule) = task.summary.schedule.as_ref() {
                 let next_ready_at = next_scheduled_ready_at(task.summary.ready_at, schedule, now)?;
                 task.summary.status = TaskStatus::Todo;
                 task.summary.ready_at = Some(next_ready_at);
-                return Ok(format!(
-                    "{}; next ready at {}",
+                return Ok(append_event_detail(
                     describe_progress_message(&task.summary.continuation),
-                    next_ready_at.to_rfc3339()
+                    format!("next ready {}", format_timestamp(&next_ready_at)),
                 ));
             }
 
@@ -366,5 +366,13 @@ impl TaskStore {
             }
         }
         unreachable!("monotonic integer suffix should eventually become unique")
+    }
+}
+
+fn append_event_detail(message: String, detail: String) -> String {
+    if message.is_empty() {
+        detail
+    } else {
+        format!("{message}; {detail}")
     }
 }

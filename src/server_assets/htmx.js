@@ -129,9 +129,9 @@
   });
 
   document.addEventListener('click', function (event) {
-    var el = event.target.closest('[hx-get]:not([hx-trigger~="load"]), [hx-post]:not(form)');
+    var el = event.target.closest('[hx-get]:not(form):not([hx-trigger~="load"]), [hx-post]:not(form)');
     if (!el) return;
-    if (isFormControl(el) && el.tagName !== 'BUTTON') return;
+    if (isFormControl(event.target) && event.target.tagName !== 'BUTTON') return;
     event.preventDefault();
     requestForElement(el);
   });

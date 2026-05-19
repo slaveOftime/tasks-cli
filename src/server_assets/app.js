@@ -42,10 +42,7 @@ function updateScheduleForm(form) {
     });
   });
 
-  var readyAt = form.querySelector('[data-schedule-ready-at]');
-  if (readyAt) readyAt.disabled = mode === 'clear';
-
-  var ready = mode === 'clear';
+  var ready = false;
   if (mode === 'interval') {
     var interval = form.querySelector('[data-schedule-panel="interval"] input[name="every_minutes"]');
     ready = Boolean(interval && interval.value.trim() !== '');

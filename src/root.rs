@@ -55,7 +55,10 @@ fn parse_timestamp_with_now(value: &str, now: DateTime<Local>) -> Result<DateTim
 }
 
 fn parse_local_naive_timestamp(value: &str, now: DateTime<Local>) -> Result<NaiveDateTime> {
-    let parts = value.split_whitespace().collect::<Vec<_>>();
+    let parts = value
+        .split(['T', ' ', '\t'])
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
     match parts.as_slice() {
         [time] => Ok(NaiveDateTime::new(now.date_naive(), parse_time(time)?)),
         [date, time] => Ok(NaiveDateTime::new(
@@ -82,6 +85,8 @@ fn parse_date(value: &str, current_year: i32) -> Result<NaiveDate> {
 fn parse_time(value: &str) -> Result<NaiveTime> {
     let parts = parse_number_parts(value, ':')?;
     match parts.as_slice() {
+        [hour, minute] => NaiveTime::from_hms_opt(*hour, *minute, 0)
+            .ok_or_else(|| anyhow!("invalid local time '{value}'")),
         [hour, minute, second] => NaiveTime::from_hms_opt(*hour, *minute, *second)
             .ok_or_else(|| anyhow!("invalid local time '{value}'")),
         _ => bail!("invalid local time '{value}'"),
@@ -147,6 +152,14 @@ mod tests {
                 .format("%Y-%m-%d %H:%M:%S")
                 .to_string(),
             "2026-05-10 13:00:00"
+        );
+        assert_eq!(
+            parse_timestamp_with_now("2026-05-10T12:20", now)
+                .unwrap()
+                .with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+            "2026-05-10 12:20:00"
         );
         assert!(parse_timestamp_with_now("2026/05/10 12:20:10", now).is_err());
     }
